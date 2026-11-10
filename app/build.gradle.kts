@@ -22,7 +22,7 @@ val versionProperties = Properties().apply {
 }
 
 fun buildConfigString(value: String): String =
-    "\"\u0024{value.replace("\\\\", "\\\\\\\\").replace("\"", "\\\"")}\""
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull
     ?: System.getenv("VERSION_CODE")
