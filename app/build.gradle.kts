@@ -22,7 +22,7 @@ val versionProperties = Properties().apply {
 }
 
 fun buildConfigString(value: String): String =
-    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+    "\"\u0024{value.replace("\\\\", "\\\\\\\\").replace("\"", "\\\"")}\""
 
 val appVersionCode = providers.gradleProperty("VERSION_CODE").orNull
     ?: System.getenv("VERSION_CODE")
@@ -106,9 +106,8 @@ android {
         buildConfigField("String", "REMOTE_SETUP_API_BASE_URL", buildConfigString(remoteSetupApiBaseUrl.trimEnd('/')))
         buildConfigField("String", "REMOTE_SETUP_WEB_BASE_URL", buildConfigString(remoteSetupWebBaseUrl.trimEnd('/')))
 
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-        }
+        // ABI selection is handled by splits below. Do not also set ndk.abiFilters:
+        // Android Gradle Plugin rejects using both mechanisms together.
     }
 
     compileOptions {
@@ -177,6 +176,7 @@ android {
         }
     }
 
+    // Produce two APKs only: arm64-v8a and armeabi-v7a. No universal APK.
     splits {
         abi {
             isEnable = true
@@ -228,6 +228,7 @@ tasks.configureEach {
             val keyAlias = providers.gradleProperty("ANDROID_KEY_ALIAS").orNull
                 ?: System.getenv("ANDROID_KEY_ALIAS")
                 ?: localProperties.getProperty("ANDROID_KEY_ALIAS")
+
             val keyPassword = providers.gradleProperty("ANDROID_KEY_PASSWORD").orNull
                 ?: System.getenv("ANDROID_KEY_PASSWORD")
                 ?: System.getenv("KEY_PASSWORD")
@@ -314,7 +315,7 @@ dependencies {
     // Room
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
+    implementation(libs.room.compiler)
 
     // DataStore
     implementation(libs.datastore.preferences)
