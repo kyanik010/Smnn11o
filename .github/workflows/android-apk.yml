@@ -38,7 +38,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools,build-tools;35.0.0,platforms;android-35
+          packages: platform-tools
 
       - name: Run unit tests
         run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
@@ -89,7 +89,10 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools,build-tools;35.0.0,platforms;android-35
+          packages: platform-tools
+
+      - name: Install APK signing tools
+        run: sdkmanager "build-tools;35.0.0" "platforms;android-35"
 
       - name: Restore existing upload keystore
         shell: bash
