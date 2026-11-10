@@ -1,3 +1,4 @@
+# Re-run signed release after configuring all signing secrets.
 name: Signed Android Release
 
 on:
@@ -57,7 +58,7 @@ jobs:
             echo "All required signing secrets are configured."
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Release signing is waiting for ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD repository secrets."
+            echo "::warning::Release signing is waiting for all four Android signing repository secrets."
           fi
 
   release:
