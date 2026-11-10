@@ -1,21 +1,25 @@
-name: Android APK Build
+name: Signed Android Release
 
 on:
   push:
     branches:
-      - ci/android-apk-build
       - sync/idealplayer-official-missing-files
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: sonix-signed-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build:
-    name: Build and test Android app
+  verify:
+    name: Unit tests and signing-secret check
     runs-on: ubuntu-latest
     timeout-minutes: 45
-
+    outputs:
+      signing_ready: ${{ steps.signing.outputs.ready }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -34,39 +38,108 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools
-
-      - name: Create local debug signing key
-        run: |
-          keytool -genkeypair -v \
-            -keystore debug.keystore \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
-
-      - name: Build debug APK
-        run: gradle --no-daemon clean :app:assembleDebug
+          packages: platform-tools,build-tools;35.0.0,platforms;android-35
 
       - name: Run unit tests
-        run: gradle --no-daemon :app:testDebugUnitTest
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
 
-      - name: Upload debug APK
+      - name: Check signing secrets are configured
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$ANDROID_KEYSTORE_PASSWORD" && -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "All required signing secrets are configured."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Release signing is waiting for ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD repository secrets."
+          fi
+
+  release:
+    name: Build, sign, and verify ABI APKs
+    needs: verify
+    if: needs.verify.outputs.signing_ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools,build-tools;35.0.0,platforms;android-35
+
+      - name: Restore existing upload keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/my-upload-key.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Build signed Release APKs
+        run: gradle --no-daemon clean :app:assembleRelease --stacktrace
+
+      - name: Verify APK architectures and signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_DIR="app/build/outputs/apk/release"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#APKS[@]}" -eq 2
+
+          KEYSTORE_CERT_SHA256="$(keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | awk '/SHA256:/{gsub(":", "", $2); print $2; exit}')"
+          test -n "$KEYSTORE_CERT_SHA256"
+
+          for apk in "${APKS[@]}"; do
+            filename="$(basename "$apk")"
+            case "$filename" in
+              *arm64-v8a*) expected_abi="arm64-v8a" ;;
+              *armeabi-v7a*) expected_abi="armeabi-v7a" ;;
+              *) echo "::error::Unexpected APK filename: $filename"; exit 1 ;;
+            esac
+
+            "$APKSIGNER" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
+            APK_CERT_SHA256="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}' "$RUNNER_TEMP/apk-signature.txt" | tr -d ' ')"
+            test -n "$APK_CERT_SHA256"
+            test "$APK_CERT_SHA256" = "$KEYSTORE_CERT_SHA256"
+
+            mapfile -t APK_ABIS < <(unzip -Z1 "$apk" | awk -F/ '$1=="lib" && NF >= 3 {print $2}' | sort -u)
+            test "${#APK_ABIS[@]}" -eq 1
+            test "${APK_ABIS[0]}" = "$expected_abi"
+            ! printf '%s\n' "${APK_ABIS[@]}" | grep -q 'x86_64'
+
+            echo "Verified: $filename | ABI=$expected_abi | certificate SHA-256=$APK_CERT_SHA256 | size=$(du -h "$apk" | cut -f1)"
+          done
+
+      - name: Upload signed Release APKs
         uses: actions/upload-artifact@v4
         with:
-          name: idealplayer-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: sonix-signed-release-apks
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: idealplayer-test-reports
-          path: app/build/reports/tests/testDebugUnitTest/
-          if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 30

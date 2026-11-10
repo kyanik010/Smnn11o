@@ -107,7 +107,7 @@ android {
         buildConfigField("String", "REMOTE_SETUP_WEB_BASE_URL", buildConfigString(remoteSetupWebBaseUrl.trimEnd('/')))
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
@@ -153,17 +153,36 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+            val keystorePath = providers.gradleProperty("KEYSTORE_PATH").orNull
+                ?: System.getenv("KEYSTORE_PATH")
+                ?: "${rootDir}/my-upload-key.jks"
             storeFile = file(keystorePath)
-            storePassword = System.getenv("STORE_PASSWORD")
-            keyAlias = "upload"
-            keyPassword = System.getenv("KEY_PASSWORD")
+            storePassword = providers.gradleProperty("ANDROID_KEYSTORE_PASSWORD").orNull
+                ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                ?: System.getenv("STORE_PASSWORD")
+                ?: localProperties.getProperty("ANDROID_KEYSTORE_PASSWORD")
+            keyAlias = providers.gradleProperty("ANDROID_KEY_ALIAS").orNull
+                ?: System.getenv("ANDROID_KEY_ALIAS")
+                ?: localProperties.getProperty("ANDROID_KEY_ALIAS")
+            keyPassword = providers.gradleProperty("ANDROID_KEY_PASSWORD").orNull
+                ?: System.getenv("ANDROID_KEY_PASSWORD")
+                ?: System.getenv("KEY_PASSWORD")
+                ?: localProperties.getProperty("ANDROID_KEY_PASSWORD")
         }
         create("debugConfig") {
             storeFile = file("${rootDir}/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
         }
     }
 
@@ -197,6 +216,30 @@ android {
 // Play-oriented release tasks may intentionally build unsigned in CI, but direct-distribution
 // artifacts must never be produced or published without a signing identity.
 tasks.configureEach {
+    if (name.equals("assembleRelease", ignoreCase = true)) {
+        doFirst {
+            val keystorePath = providers.gradleProperty("KEYSTORE_PATH").orNull
+                ?: System.getenv("KEYSTORE_PATH")
+                ?: "${rootDir}/my-upload-key.jks"
+            val storePassword = providers.gradleProperty("ANDROID_KEYSTORE_PASSWORD").orNull
+                ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                ?: System.getenv("STORE_PASSWORD")
+                ?: localProperties.getProperty("ANDROID_KEYSTORE_PASSWORD")
+            val keyAlias = providers.gradleProperty("ANDROID_KEY_ALIAS").orNull
+                ?: System.getenv("ANDROID_KEY_ALIAS")
+                ?: localProperties.getProperty("ANDROID_KEY_ALIAS")
+            val keyPassword = providers.gradleProperty("ANDROID_KEY_PASSWORD").orNull
+                ?: System.getenv("ANDROID_KEY_PASSWORD")
+                ?: System.getenv("KEY_PASSWORD")
+                ?: localProperties.getProperty("ANDROID_KEY_PASSWORD")
+
+            check(file(keystorePath).isFile && !storePassword.isNullOrBlank() &&
+                !keyAlias.isNullOrBlank() && !keyPassword.isNullOrBlank()) {
+                "Signed Release requires the existing keystore file and all signing credentials. " +
+                    "Configure KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD."
+            }
+        }
+    }
     if (name.contains("SelfHostedRelease", ignoreCase = true)) {
         doFirst {
             check(hasReleaseSigning) {
