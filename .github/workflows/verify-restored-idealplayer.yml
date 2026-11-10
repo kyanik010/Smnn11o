@@ -30,28 +30,8 @@ jobs:
         with:
           packages: platform-tools
 
-      - name: Create local debug signing key
-        run: |
-          keytool -genkeypair -v \
-            -keystore debug.keystore \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
-
-      - name: Build debug APK and run unit tests
-        run: ./gradlew --no-daemon clean :app:assembleDebug :app:testDebugUnitTest
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: idealplayer-restored-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
+      - name: Run unit tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --stacktrace
 
       - name: Upload unit test reports
         if: always()
