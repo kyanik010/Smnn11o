@@ -101,8 +101,12 @@ jobs:
           set -euo pipefail
           KEYSTORE_PATH="$RUNNER_TEMP/my-upload-key.jks"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
-          test -s "$KEYSTORE_PATH"
+          if [[ ! -s "$KEYSTORE_PATH" ]]; then
+            echo "::error::Keystore restore produced an empty file."
+            exit 1
+          fi
           echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "Existing upload keystore restored."
 
       - name: Build signed Release APKs
         run: gradle --no-daemon clean :app:assembleRelease --stacktrace
@@ -113,32 +117,107 @@ jobs:
           set -euo pipefail
           APK_DIR="app/build/outputs/apk/release"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+
+          echo "APK output directory: $APK_DIR"
+          if [[ ! -d "$APK_DIR" ]]; then
+            echo "::error::APK output directory does not exist."
+            find app/build/outputs -maxdepth 5 -type f -print 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "APK files found:"
+          find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -printf '%f (%s bytes)\n' | sort
           mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | sort)
-          test "${#APKS[@]}" -eq 2
+          if [[ "${#APKS[@]}" -ne 2 ]]; then
+            echo "::error::Expected exactly 2 ABI APKs, found ${#APKS[@]}."
+            printf 'Found: %s\n' "${APKS[@]:-<none>}"
+            exit 1
+          fi
 
-          KEYSTORE_CERT_SHA256="$(keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>/dev/null | awk '/SHA256:/{gsub(":", "", $2); print $2; exit}')"
-          test -n "$KEYSTORE_CERT_SHA256"
+          normalize_digest() {
+            tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]'
+          }
 
+          KEYSTORE_CERT_SHA256="$(
+            keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" \
+              -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>&1 |
+              awk '/SHA256:/{print $2; exit}' | normalize_digest
+          )"
+          if [[ -z "$KEYSTORE_CERT_SHA256" ]]; then
+            echo "::error::Could not read SHA-256 certificate fingerprint from the configured keystore alias."
+            exit 1
+          fi
+          echo "Keystore certificate SHA-256: $KEYSTORE_CERT_SHA256"
+
+          declare -A SEEN_ABIS=()
           for apk in "${APKS[@]}"; do
             filename="$(basename "$apk")"
+            echo "::group::Inspecting $filename"
+
             case "$filename" in
               *arm64-v8a*) expected_abi="arm64-v8a" ;;
               *armeabi-v7a*) expected_abi="armeabi-v7a" ;;
-              *) echo "::error::Unexpected APK filename: $filename"; exit 1 ;;
+              *)
+                echo "::error::Unexpected APK filename: $filename"
+                exit 1
+                ;;
             esac
 
-            "$APKSIGNER" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
-            APK_CERT_SHA256="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}' "$RUNNER_TEMP/apk-signature.txt" | tr -d ' ')"
-            test -n "$APK_CERT_SHA256"
-            test "$APK_CERT_SHA256" = "$KEYSTORE_CERT_SHA256"
+            if [[ -n "${SEEN_ABIS[$expected_abi]:-}" ]]; then
+              echo "::error::Duplicate APK for ABI $expected_abi."
+              exit 1
+            fi
+            SEEN_ABIS["$expected_abi"]=1
 
-            mapfile -t APK_ABIS < <(unzip -Z1 "$apk" | awk -F/ '$1=="lib" && NF >= 3 {print $2}' | sort -u)
-            test "${#APK_ABIS[@]}" -eq 1
-            test "${APK_ABIS[0]}" = "$expected_abi"
-            ! printf '%s\n' "${APK_ABIS[@]}" | grep -q 'x86_64'
+            SIGNATURE_OUTPUT="$RUNNER_TEMP/${filename}.signature.txt"
+            if ! "$APKSIGNER" verify --verbose --print-certs "$apk" > "$SIGNATURE_OUTPUT" 2>&1; then
+              cat "$SIGNATURE_OUTPUT"
+              echo "::error::apksigner verification failed for $filename."
+              exit 1
+            fi
+            cat "$SIGNATURE_OUTPUT"
+            APK_CERT_SHA256="$(
+              awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}' "$SIGNATURE_OUTPUT" |
+                normalize_digest
+            )"
+            if [[ -z "$APK_CERT_SHA256" ]]; then
+              echo "::error::Could not read APK signer SHA-256 fingerprint for $filename."
+              exit 1
+            fi
+            if [[ "$APK_CERT_SHA256" != "$KEYSTORE_CERT_SHA256" ]]; then
+              echo "::error::Certificate mismatch for $filename."
+              echo "Keystore SHA-256: $KEYSTORE_CERT_SHA256"
+              echo "APK SHA-256:      $APK_CERT_SHA256"
+              exit 1
+            fi
+
+            mapfile -t APK_ABIS < <(unzip -Z1 "$apk" |
+              awk -F/ '$1=="lib" && NF >= 3 {print $2}' | sort -u)
+            echo "Native ABIs inside APK: ${APK_ABIS[*]:-<none>}"
+            if [[ "${#APK_ABIS[@]}" -ne 1 ]]; then
+              echo "::error::Expected exactly one native ABI in $filename; found ${#APK_ABIS[@]}."
+              exit 1
+            fi
+            if [[ "${APK_ABIS[0]}" != "$expected_abi" ]]; then
+              echo "::error::Filename ABI ($expected_abi) does not match APK contents (${APK_ABIS[0]})."
+              exit 1
+            fi
+            if [[ "${APK_ABIS[0]}" == "x86_64" ]]; then
+              echo "::error::Forbidden x86_64 ABI found."
+              exit 1
+            fi
 
             echo "Verified: $filename | ABI=$expected_abi | certificate SHA-256=$APK_CERT_SHA256 | size=$(du -h "$apk" | cut -f1)"
+            echo "::endgroup::"
           done
+
+          for required_abi in arm64-v8a armeabi-v7a; do
+            if [[ -z "${SEEN_ABIS[$required_abi]:-}" ]]; then
+              echo "::error::Required ABI APK is missing: $required_abi"
+              exit 1
+            fi
+          done
+          echo "All checks passed: exactly arm64-v8a and armeabi-v7a, signed with the existing upload certificate."
 
       - name: Upload signed Release APKs
         uses: actions/upload-artifact@v4
