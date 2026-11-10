@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - ci/android-apk-build
+      - sync/idealplayer-official-missing-files
   workflow_dispatch:
 
 permissions:
@@ -32,6 +33,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Create local debug signing key
         run: |
