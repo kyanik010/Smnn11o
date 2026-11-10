@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adaptive live TV -->
+    <string name="a2_tablet_live_empty_title">Select a channel from the list</string>
+    <string name="a2_tablet_live_empty_message">The selected live channel plays in this panel.</string>
+
+    <!-- Shared A2 labels and states -->
+    <string name="a2_state_on">On</string>
+    <string name="a2_state_off">Off</string>
+    <string name="a2_state_active">Active</string>
+    <string name="a2_state_inactive">Inactive</string>
+    <string name="a2_selected_playlist_state">Selected playlist</string>
+    <string name="a2_action_new">New</string>
+    <string name="a2_action_open">Open</string>
+    <string name="a2_action_yes_delete">Yes, Delete</string>
+    <string name="a2_action_verify">Verify</string>
+    <string name="a2_action_testing">Testing…</string>
+    <string name="a2_action_save_changes">Save Changes</string>
+    <string name="a2_action_save_continue">Save and Continue</string>
+    <string name="a2_action_choose_playlist_file">Choose playlist file</string>
+    <string name="a2_action_change_playlist_file">Change playlist file</string>
+    <string name="a2_action_remote_add">Add Remotely with QR</string>
+    <string name="a2_action_cancel_close">Cancel / Close</string>
+    <string name="a2_hint_ok_open">Press OK to open</string>
+    <string name="a2_hint_ok_add">Press OK to add</string>
+    <string name="a2_hint_ok_start">Press OK to start</string>
+    <string name="a2_channel_singular">Channel</string>
+    <string name="a2_movie_singular">Movie</string>
+    <string name="a2_series_singular">Series</string>
+    <string name="a2_source_singular">Source</string>
+    <string name="a2_featured">FEATURED</string>
+    <string name="a2_action_close">Close</string>
+
+    <!-- Mobile welcome -->
+    <string name="a2_welcome_title">Your content. Beautifully organized.</string>
+    <string name="a2_welcome_subtitle">A cinematic player for your own playlists and streams on mobile, tablet, and Android TV.</string>
+    <string name="a2_welcome_notice_title">Add your own content</string>
+    <string name="a2_welcome_notice_message">IdealPlayer does not provide channels or playlists.</string>
+    <string name="a2_welcome_start">Get started</string>
+    <string name="a2_welcome_how">How does it work?</string>
+    <string name="a2_welcome_how_title">Ready in three steps</string>
+    <string name="a2_welcome_how_message">Add your M3U, local file, or Xtream source. Test the connection safely, then start watching your own streams.</string>
+
+    <!-- Playlist onboarding -->
+    <string name="a2_playlist_preparing_title">Preparing playlist</string>
+    <string name="a2_playlists_loading_message">Loading playlists</string>
+    <string name="a2_my_playlists_title">My Playlists</string>
+    <string name="a2_add_own_playlists">Add your own playlists</string>
+    <plurals name="a2_playlist_sources_ready">
+        <item quantity="one">%1$d source ready</item>
+        <item quantity="other">%1$d sources ready</item>
+    </plurals>
+    <string name="a2_no_playlists_title">No playlists yet</string>
+    <string name="a2_no_playlists_message">Start by adding an M3U, a file, or an Xtream account. IdealPlayer does not provide channels or playlists.</string>
+    <string name="a2_brand_prefix">IdealPlayer</string>
+    <string name="a2_brand_suffix">\u0020Player</string>
+    <string name="a2_tv_add_media_sources">Add media sources for TV</string>
+    <string name="a2_tv_playlist_center">TV playlist center</string>
+    <string name="a2_active_source_format">Active source: %1$s</string>
+    <string name="a2_add_source_remote_hint">Add a source, test it, and continue with the remote.</string>
+    <string name="a2_new_playlist">New playlist</string>
+    <string name="a2_add_new_playlist">Add new playlist</string>
+    <string name="a2_tv_add_playlist_description">Add an M3U URL, Xtream / Portal, or a local file. Press OK on the remote to use the TV-friendly setup flow.</string>
+    <string name="a2_edit_playlist_title">Edit Playlist</string>
+    <string name="a2_edit_playlist_tv_description">Update provider details, test the connection, and save without leaving the TV playlist manager.</string>
+    <string name="a2_add_playlist_tv_title">Add Playlist on TV</string>
+    <string name="a2_add_playlist_tv_description">Step 1: choose a provider type. Step 2: fill in only the required fields. Step 3: test and save.</string>
+    <string name="a2_playlist_type_label">Playlist Type</string>
+    <string name="a2_provider_type_title">Provider Type</string>
+    <string name="a2_playlist_details_title">Playlist Details</string>
+    <string name="a2_dialog_focus_locked">Dialog focus is locked</string>
+    <string name="a2_file_selected">File selected</string>
+    <string name="a2_epg_url_optional">EPG URL (Optional)</string>
+    <string name="a2_playlist_name_placeholder">Living room playlist</string>
+    <string name="a2_m3u_url_placeholder">https://provider.example.com/playlist.m3u</string>
+    <string name="a2_local_file_path_label">Local File Path</string>
+    <string name="a2_local_file_path_placeholder">/storage/emulated/0/Download/playlist.m3u</string>
+    <string name="a2_server_url_placeholder">https://portal.example.com</string>
+    <string name="a2_username_placeholder">Enter provider username</string>
+    <string name="a2_password_placeholder">Enter provider password</string>
+    <string name="a2_epg_url_placeholder">https://example.com/epg.xml</string>
+    <string name="a2_playlist_type_m3u_url">M3U URL</string>
+    <string name="a2_playlist_type_local_file">Local File</string>
+    <string name="a2_playlist_type_xtream">Xtream / Portal</string>
+    <string name="a2_type_m3u_url_summary">One playlist URL</string>
+    <string name="a2_type_xtream_summary">Server, username, and password</string>
+    <string name="a2_type_local_file_summary">Local file path</string>
+    <string name="a2_helper_m3u_title">Use one direct playlist link</string>
+    <string name="a2_helper_xtream_title">Use portal credentials</string>
+    <string name="a2_helper_file_title">Use a local playlist file</string>
+    <string name="a2_helper_m3u_text">Paste a direct M3U address. This is the fastest setup flow for TV remotes.</string>
+    <string name="a2_helper_xtream_text">Enter the server URL, username, and password. Only the required fields are shown.</string>
+    <string name="a2_helper_file_text">Use this only if the TV already has a local playlist file path you can access.</string>
+    <string name="a2_qr_remote_add_title">Add Remotely with QR Code</string>
+    <string name="a2_qr_remote_add_description">Scan the QR code with your phone to load your playlist in seconds.</string>
+    <string name="a2_connected_idealplayer_title">Connected IdealPlayer</string>
+    <string name="a2_connected_idealplayer_description">Start a secure pairing session from your phone without typing lengthy playlist details with the remote.</string>
+    <string name="a2_connected_idealplayer_qr_description">Connected IdealPlayer pairing QR code</string>
+    <string name="a2_tv_pairing_code">TV Pairing Code</string>
+    <string name="a2_address">Connection URL</string>
+    <string name="a2_pairing_completed">Pairing complete! Your playlist is transferring to the TV…</string>
+    <string name="a2_pairing_error">An error occurred while pairing.</string>
+    <string name="a2_pairing_pending">The session is open. Send the playlist to the TV from the Connected IdealPlayer form.</string>
+
+    <!-- Parental control -->
+    <string name="a2_child_lock">Child Lock</string>
+    <string name="a2_parental_pin_not_set">PIN is not set — set a PIN first</string>
+    <string name="a2_parental_lock_active">Active — only allowed categories are visible</string>
+    <string name="a2_change_pin">Change PIN</string>
+    <string name="a2_delete_pin">Delete PIN</string>
+    <string name="a2_set_pin">Set PIN</string>
+    <string name="a2_allowed_categories">Allowed Categories</string>
+    <string name="a2_no_categories_selected">None selected</string>
+    <string name="a2_verify_pin_disable_lock">PIN to Disable Lock</string>
+    <string name="a2_verify_pin_enable_lock">PIN to Enable Lock</string>
+    <string name="a2_verify_pin_delete">Current PIN to Delete</string>
+    <string name="a2_delete_pin_message">Deleting the PIN will also disable child lock. Are you sure?</string>
+    <string name="a2_delete_pin_state">PIN deletion confirmation</string>
+    <string name="a2_set_pin_message">Enter the four-digit PIN twice.</string>
+    <string name="a2_set_pin_state">Set a new PIN</string>
+    <string name="a2_new_parental_pin_description">New four-digit parental PIN</string>
+    <string name="a2_confirm_parental_pin_description">Confirm the new parental PIN</string>
+    <plurals name="a2_pin_progress">
+        <item quantity="one">%1$d of 4 digits entered</item>
+        <item quantity="other">%1$d of 4 digits entered</item>
+    </plurals>
+    <plurals name="a2_pin_confirm_progress">
+        <item quantity="one">%1$d of 4 digits confirmed</item>
+        <item quantity="other">%1$d of 4 digits confirmed</item>
+    </plurals>
+    <string name="a2_pin_four_digits_error">PIN must contain 4 digits</string>
+    <string name="a2_pin_mismatch_error">PINs do not match</string>
+    <string name="a2_verify_pin_message">Enter the four-digit parental PIN to continue.</string>
+    <string name="a2_parental_pin_description">Parental control PIN</string>
+    <string name="a2_incorrect_pin_state">The entered PIN is incorrect</string>
+    <string name="a2_incorrect_pin">Incorrect PIN</string>
+    <string name="a2_allowed_categories_description">These categories can be viewed while child lock is active.</string>
+    <string name="a2_category_news">News</string>
+    <string name="a2_category_sports">Sports</string>
+    <string name="a2_category_documentary">Documentary</string>
+    <string name="a2_category_children">Children</string>
+    <string name="a2_category_education">Education</string>
+    <string name="a2_category_music">Music</string>
+    <string name="a2_category_movie">Movie</string>
+    <string name="a2_category_series">Series</string>
+    <string name="a2_category_general">General</string>
+
+    <!-- Update and details -->
+    <string name="a2_overview_collapse">Collapse ▲</string>
+    <string name="a2_overview_expand">Show More ▼</string>
+    <string name="a2_trailer">Trailer</string>
+</resources>

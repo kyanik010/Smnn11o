@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Adaptive live TV -->
+    <string name="a2_tablet_live_empty_title">Sol listeden bir kanal seçin</string>
+    <string name="a2_tablet_live_empty_message">Seçtiğiniz canlı yayın bu panelde oynatılır.</string>
+
+    <!-- Shared A2 labels and states -->
+    <string name="a2_state_on">Açık</string>
+    <string name="a2_state_off">Kapalı</string>
+    <string name="a2_state_active">Aktif</string>
+    <string name="a2_state_inactive">Pasif</string>
+    <string name="a2_selected_playlist_state">Seçili oynatma listesi</string>
+    <string name="a2_action_new">Yeni</string>
+    <string name="a2_action_open">Aç</string>
+    <string name="a2_action_yes_delete">Evet, Sil</string>
+    <string name="a2_action_verify">Doğrula</string>
+    <string name="a2_action_testing">Test ediliyor…</string>
+    <string name="a2_action_save_changes">Değişiklikleri Kaydet</string>
+    <string name="a2_action_save_continue">Kaydet ve Devam Et</string>
+    <string name="a2_action_choose_playlist_file">Oynatma listesi dosyası seç</string>
+    <string name="a2_action_change_playlist_file">Oynatma listesi dosyasını değiştir</string>
+    <string name="a2_action_remote_add">QR ile Uzaktan Ekle</string>
+    <string name="a2_action_cancel_close">İptal Et / Kapat</string>
+    <string name="a2_hint_ok_open">OK ile aç</string>
+    <string name="a2_hint_ok_add">OK ile ekle</string>
+    <string name="a2_hint_ok_start">OK ile başlat</string>
+    <string name="a2_channel_singular">Kanal</string>
+    <string name="a2_movie_singular">Film</string>
+    <string name="a2_series_singular">Dizi</string>
+    <string name="a2_source_singular">Kaynak</string>
+    <string name="a2_featured">ÖNE ÇIKAN</string>
+    <string name="a2_action_close">Kapat</string>
+
+    <!-- Mobile welcome -->
+    <string name="a2_welcome_title">İçeriğiniz. Güzelce düzenlendi.</string>
+    <string name="a2_welcome_subtitle">Kendi oynatma listeleriniz ve yayınlarınız için mobil, tablet ve Android TV’de sinematik bir oynatıcı.</string>
+    <string name="a2_welcome_notice_title">Kendi içeriğinizi ekleyin</string>
+    <string name="a2_welcome_notice_message">IdealPlayer kanal veya oynatma listesi sağlamaz.</string>
+    <string name="a2_welcome_start">Başlayalım</string>
+    <string name="a2_welcome_how">Nasıl çalışır?</string>
+    <string name="a2_welcome_how_title">Üç adımda hazır</string>
+    <string name="a2_welcome_how_message">M3U, yerel dosya veya Xtream kaynağınızı ekleyin. Bağlantıyı güvenle test edin, ardından kendi yayınlarınızı izlemeye başlayın.</string>
+
+    <!-- Playlist onboarding -->
+    <string name="a2_playlist_preparing_title">Oynatma listesi hazırlanıyor</string>
+    <string name="a2_playlists_loading_message">Oynatma listeleri yükleniyor</string>
+    <string name="a2_my_playlists_title">Listelerim</string>
+    <string name="a2_add_own_playlists">Kendi oynatma listelerinizi ekleyin</string>
+    <plurals name="a2_playlist_sources_ready">
+        <item quantity="one">%1$d kaynak hazır</item>
+        <item quantity="other">%1$d kaynak hazır</item>
+    </plurals>
+    <string name="a2_no_playlists_title">Henüz liste yok</string>
+    <string name="a2_no_playlists_message">M3U, dosya veya Xtream hesabınızı ekleyerek başlayın. IdealPlayer kanal veya oynatma listesi sağlamaz.</string>
+    <string name="a2_brand_prefix">IdealPlayer</string>
+    <string name="a2_brand_suffix">\u0020Player</string>
+    <string name="a2_tv_add_media_sources">TV için medya kaynaklarını ekleyin</string>
+    <string name="a2_tv_playlist_center">TV liste merkezi</string>
+    <string name="a2_active_source_format">Aktif kaynak: %1$s</string>
+    <string name="a2_add_source_remote_hint">Kaynak ekleyin, test edin ve kumandayla devam edin.</string>
+    <string name="a2_new_playlist">Yeni liste</string>
+    <string name="a2_add_new_playlist">Yeni liste ekle</string>
+    <string name="a2_tv_add_playlist_description">M3U URL, Xtream / Portal veya yerel dosya ekleyin. Kumandada OK ile TV uyumlu kurulum akışına geçin.</string>
+    <string name="a2_edit_playlist_title">Oynatma Listesini Düzenle</string>
+    <string name="a2_edit_playlist_tv_description">Sağlayıcı bilgilerini güncelleyin, bağlantıyı test edin ve TV liste yöneticisinden ayrılmadan kaydedin.</string>
+    <string name="a2_add_playlist_tv_title">TV’de Oynatma Listesi Ekle</string>
+    <string name="a2_add_playlist_tv_description">1. adım: Sağlayıcı türünü seçin. 2. adım: Yalnız gerekli alanları doldurun. 3. adım: Test edip kaydedin.</string>
+    <string name="a2_playlist_type_label">Oynatma Listesi Türü</string>
+    <string name="a2_provider_type_title">Sağlayıcı Türü</string>
+    <string name="a2_playlist_details_title">Oynatma Listesi Bilgileri</string>
+    <string name="a2_dialog_focus_locked">İletişim kutusu odağı kilitli</string>
+    <string name="a2_file_selected">Dosya seçildi</string>
+    <string name="a2_epg_url_optional">EPG URL (İsteğe Bağlı)</string>
+    <string name="a2_playlist_name_placeholder">Salon oynatma listesi</string>
+    <string name="a2_m3u_url_placeholder">https://provider.example.com/playlist.m3u</string>
+    <string name="a2_local_file_path_label">Yerel Dosya Yolu</string>
+    <string name="a2_local_file_path_placeholder">/storage/emulated/0/Download/playlist.m3u</string>
+    <string name="a2_server_url_placeholder">https://portal.example.com</string>
+    <string name="a2_username_placeholder">Sağlayıcı kullanıcı adını girin</string>
+    <string name="a2_password_placeholder">Sağlayıcı şifresini girin</string>
+    <string name="a2_epg_url_placeholder">https://example.com/epg.xml</string>
+    <string name="a2_playlist_type_m3u_url">M3U URL</string>
+    <string name="a2_playlist_type_local_file">Yerel Dosya</string>
+    <string name="a2_playlist_type_xtream">Xtream / Portal</string>
+    <string name="a2_type_m3u_url_summary">Tek oynatma listesi URL’si</string>
+    <string name="a2_type_xtream_summary">Sunucu, kullanıcı adı ve şifre</string>
+    <string name="a2_type_local_file_summary">Yerel dosya yolu</string>
+    <string name="a2_helper_m3u_title">Tek bir doğrudan oynatma listesi bağlantısı kullanın</string>
+    <string name="a2_helper_xtream_title">Portal giriş bilgilerini kullanın</string>
+    <string name="a2_helper_file_title">Yerel bir oynatma listesi dosyası kullanın</string>
+    <string name="a2_helper_m3u_text">Doğrudan M3U adresini yapıştırın. TV kumandaları için en hızlı kurulum akışıdır.</string>
+    <string name="a2_helper_xtream_text">Sunucu URL’sini, kullanıcı adını ve şifreyi girin. Yalnız gerekli alanlar gösterilir.</string>
+    <string name="a2_helper_file_text">Bunu yalnız TV’nin erişebildiğiniz yerel bir oynatma listesi dosyası varsa kullanın.</string>
+    <string name="a2_qr_remote_add_title">QR Kod ile Uzaktan Ekle</string>
+    <string name="a2_qr_remote_add_description">QR kodu telefonunuzla taratarak listenizi saniyeler içinde yükleyin.</string>
+    <string name="a2_connected_idealplayer_title">Connected IdealPlayer</string>
+    <string name="a2_connected_idealplayer_description">Kumandayla uzun liste bilgilerini yazmadan telefonunuzdan güvenli bir eşleştirme oturumu açın.</string>
+    <string name="a2_connected_idealplayer_qr_description">Connected IdealPlayer eşleştirme QR kodu</string>
+    <string name="a2_tv_pairing_code">TV Eşleştirme Kodu</string>
+    <string name="a2_address">Bağlantı URL’si</string>
+    <string name="a2_pairing_completed">Eşleşme başarılı! Listeniz TV’ye aktarılıyor…</string>
+    <string name="a2_pairing_error">Eşleşme sırasında bir hata oluştu.</string>
+    <string name="a2_pairing_pending">Oturum açık. Connected IdealPlayer formundan listeyi TV’ye gönderin.</string>
+
+    <!-- Parental control -->
+    <string name="a2_child_lock">Çocuk Kilidi</string>
+    <string name="a2_parental_pin_not_set">PIN ayarlanmamış — önce PIN belirleyin</string>
+    <string name="a2_parental_lock_active">Aktif — sadece izin verilen kategoriler görünür</string>
+    <string name="a2_change_pin">PIN Değiştir</string>
+    <string name="a2_delete_pin">PIN’i Sil</string>
+    <string name="a2_set_pin">PIN Belirle</string>
+    <string name="a2_allowed_categories">İzin Verilen Kategoriler</string>
+    <string name="a2_no_categories_selected">Hiçbiri seçilmedi</string>
+    <string name="a2_verify_pin_disable_lock">Kilidi Kapatmak İçin PIN</string>
+    <string name="a2_verify_pin_enable_lock">Kilidi Açmak İçin PIN</string>
+    <string name="a2_verify_pin_delete">PIN’i Silmek İçin Mevcut PIN</string>
+    <string name="a2_delete_pin_message">PIN silinince çocuk kilidi de devre dışı kalacak. Emin misiniz?</string>
+    <string name="a2_delete_pin_state">PIN silme onayı</string>
+    <string name="a2_set_pin_message">Dört haneli PIN’i iki kez girin.</string>
+    <string name="a2_set_pin_state">Yeni PIN belirleme</string>
+    <string name="a2_new_parental_pin_description">Yeni dört haneli ebeveyn PIN kodu</string>
+    <string name="a2_confirm_parental_pin_description">Yeni ebeveyn PIN kodunu tekrar girin</string>
+    <plurals name="a2_pin_progress">
+        <item quantity="one">4 haneden %1$d hane girildi</item>
+        <item quantity="other">4 haneden %1$d hane girildi</item>
+    </plurals>
+    <plurals name="a2_pin_confirm_progress">
+        <item quantity="one">4 haneden %1$d hane tekrar girildi</item>
+        <item quantity="other">4 haneden %1$d hane tekrar girildi</item>
+    </plurals>
+    <string name="a2_pin_four_digits_error">PIN 4 haneli olmalı</string>
+    <string name="a2_pin_mismatch_error">PIN’ler eşleşmiyor</string>
+    <string name="a2_verify_pin_message">Devam etmek için dört haneli ebeveyn PIN kodunu girin.</string>
+    <string name="a2_parental_pin_description">Ebeveyn denetimi PIN kodu</string>
+    <string name="a2_incorrect_pin_state">Girilen PIN hatalı</string>
+    <string name="a2_incorrect_pin">Hatalı PIN</string>
+    <string name="a2_allowed_categories_description">Çocuk kilidi aktifken bu kategoriler görüntülenebilir.</string>
+    <string name="a2_category_news">Haber</string>
+    <string name="a2_category_sports">Spor</string>
+    <string name="a2_category_documentary">Belgesel</string>
+    <string name="a2_category_children">Çocuk</string>
+    <string name="a2_category_education">Eğitim</string>
+    <string name="a2_category_music">Müzik</string>
+    <string name="a2_category_movie">Film</string>
+    <string name="a2_category_series">Dizi</string>
+    <string name="a2_category_general">Genel</string>
+
+    <!-- Update and details -->
+    <string name="a2_overview_collapse">Daralt ▲</string>
+    <string name="a2_overview_expand">Devamını Göster ▼</string>
+    <string name="a2_trailer">Fragman</string>
+</resources>

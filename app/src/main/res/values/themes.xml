@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.IdealPlayer" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/sonix_background</item>
+        <item name="android:colorPrimary">@color/sonix_royal_purple</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+    </style>
+
+    <style name="Theme.IdealPlayer.Splash" parent="Theme.IdealPlayer">
+        <item name="android:windowBackground">@drawable/idealplayer_splash_background</item>
+    </style>
+</resources>

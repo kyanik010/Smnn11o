@@ -1,0 +1,6 @@
+{
+  "name": "SONIX IPTV",
+  "description": "SONIX IPTV - A cinematic, modern IPTV & media player with complete Arabic localization and multi-screen support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
