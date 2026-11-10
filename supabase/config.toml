@@ -1,0 +1,4 @@
+project_id = "idealplayer"
+
+[functions.idealplayer-remote-setup]
+verify_jwt = false

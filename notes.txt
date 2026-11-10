@@ -1,0 +1,7 @@
+1.1.1 — Playlist ve EPG Güvenilirliği
+
+- Playlist yenileme artık favorileri ve izleme geçmişi/devam et verilerini silmeden içerik eşleştiriyor.
+- Stream health worker çalışan yayınları yanlışlıkla offline işaretlememek için ranged GET ve tri-state sınıflandırma kullanıyor.
+- Worker wiring durumu kod içinde belgelendi; otomatik refresh kullanıcı kararı olmadan etkinleştirilmedi.
+- XMLTV içinde timezone olmayan zamanlar artık yerel saat diliminde yorumlanıyor.
+- Room migration test altyapısı eklendi ve mevcut migration zinciri minimal pre-state senaryolarıyla testleniyor.

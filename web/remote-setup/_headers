@@ -1,0 +1,10 @@
+/review/demo.m3u
+  Content-Type: application/vnd.apple.mpegurl; charset=utf-8
+  Content-Disposition: inline; filename="demo.m3u"
+  Cache-Control: public, max-age=300
+  Access-Control-Allow-Origin: *
+  X-Content-Type-Options: nosniff
+
+/review/licenses/*
+  Cache-Control: public, max-age=300
+  X-Content-Type-Options: nosniff

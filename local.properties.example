@@ -1,0 +1,22 @@
+# local.properties - DO NOT COMMIT THIS FILE
+
+# Android SDK location - set this to your local Android SDK path
+sdk.dir=/path/to/your/Android/Sdk
+
+# TMDB API Key for metadata (optional - app works without it)
+# Get your free API key from: https://www.themoviedb.org/settings/api
+TMDB_API_KEY=your_tmdb_api_key_here
+
+# Optional Connected IdealPlayer QR setup. Both HTTPS URLs are required to enable the feature.
+# Supabase deployment guide: docs/connected-idealplayer-supabase.md
+REMOTE_SETUP_API_BASE_URL=https://<project-ref>.supabase.co/functions/v1/idealplayer-remote-setup
+REMOTE_SETUP_WEB_BASE_URL=https://setup.example.com
+
+# Optional self-hosted release update channel. Ignored by normal Play release builds.
+UPDATE_MANIFEST_URL=https://updates.example.com/latest.json
+
+# Optional release signing configuration. Never commit the real values.
+IDEALPLAYER_RELEASE_STORE_FILE=keystores/idealplayer-release.jks
+IDEALPLAYER_RELEASE_STORE_PASSWORD=replace_me
+IDEALPLAYER_RELEASE_KEY_ALIAS=idealplayer-release
+IDEALPLAYER_RELEASE_KEY_PASSWORD=replace_me
