@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - sync/idealplayer-official-missing-files
+      - fix/sonix-external-audio-complete
   workflow_dispatch:
 
 permissions:
