@@ -132,8 +132,7 @@ class ExternalAudioManager @Inject constructor(
         if (gen != generationId.get() || !_state.value.isActive) return
 
         val streamUrl = buildXtreamUrl(channel, playlist)
-        val extension = channel.streamUrl.substringAfterLast('.', "ts").lowercase()
-
+        val extension = streamExtension(streamUrl)
         audioPlayer.play(streamUrl, if (extension == "aac") "aac" else if (extension == "mp3") "mp3" else null)
     }
 
@@ -145,7 +144,7 @@ class ExternalAudioManager @Inject constructor(
         val channel = _state.value.selectedChannel
         val playlist = currentActivePlaylist
 
-        if (channel != null && playlist != null && !_state.value.isExtractorFallbackActive && retryAttempt >= 2) {
+        if (channel != null && playlist != null && isExtractionStream(channel) && !_state.value.isExtractorFallbackActive && retryAttempt >= 2) {
             startExtractorFallback(gen, channel, playlist)
             return
         }
@@ -210,6 +209,16 @@ class ExternalAudioManager @Inject constructor(
             Timber.e(e, "Fallback extraction failed")
             scheduleRetry(gen)
         }
+    }
+
+    private fun streamExtension(url: String): String {
+        val path = try { java.net.URI(url).path.orEmpty() } catch (_: Exception) { "" }
+        return path.substringAfterLast('/').substringAfterLast('.', "").lowercase()
+    }
+
+    private fun isExtractionStream(channel: Channel): Boolean {
+        val extension = streamExtension(channel.streamUrl)
+        return extension.isBlank() || extension == "ts" || extension == "m3u8"
     }
 
     private fun buildXtreamUrl(channel: Channel, playlist: Playlist): String {
