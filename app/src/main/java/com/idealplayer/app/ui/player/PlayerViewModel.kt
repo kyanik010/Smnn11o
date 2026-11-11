@@ -187,18 +187,6 @@ class PlayerViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            state.map { it.isPlaying }.distinctUntilChanged().collect { isPlaying ->
-                if (externalAudioState.value.isActive) {
-                    if (isPlaying) {
-                        externalAudioManager.resume()
-                    } else {
-                        externalAudioManager.pause()
-                    }
-                }
-            }
-        }
-
-        viewModelScope.launch {
             while (true) {
                 delay(15_000)
                 // Progress is also persisted on pause/stop/lifecycle events. Avoid waking the
