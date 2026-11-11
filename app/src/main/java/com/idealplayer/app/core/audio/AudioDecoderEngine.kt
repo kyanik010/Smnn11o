@@ -389,7 +389,7 @@ class AudioDecoderEngine(
                             ((data[i + 4].toInt() and 0xFF) shl 3) or
                             ((data[i + 5].toInt() and 0xE0) shr 5)
 
-                    if (frameLength in 7..4096 && i + frameLength <= length) {
+                    if (frameLength in 7..8191 && i + frameLength <= length) {
                         val freqIdx = (data[i + 2].toInt() and 0x3C) shr 2
                         val sampleRate = when (freqIdx) {
                             0 -> 96000; 1 -> 88200; 2 -> 64000; 3 -> 48000; 4 -> 44100
