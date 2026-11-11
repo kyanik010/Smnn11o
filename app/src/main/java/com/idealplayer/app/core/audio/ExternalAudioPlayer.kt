@@ -151,8 +151,10 @@ class ExternalAudioPlayer(
 
     fun stop() {
         generationId.incrementAndGet()
-        mainHandler.post {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
             releasePlayer()
+        } else {
+            mainHandler.post { releasePlayer() }
         }
     }
 

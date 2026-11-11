@@ -888,6 +888,13 @@ class PlayerViewModel @Inject constructor(
         val previousStartPosition = currentStartPosition
         val previousPlaybackWasConfirmed = hasConfirmedCurrentContent || state.value.isPlaybackConfirmed
         val previousSession = session.value
+
+        // Release the secondary audio decoder before starting the next live video channel.
+        if (externalAudioManager.state.value.isActive) {
+            Timber.d("LivePlayback: stopping active external audio before channel switch")
+            externalAudioManager.stop()
+        }
+
         val targetGroupContext = channel.groupTitle.ifBlank { currentGroupContext }
         val playbackCandidates = resolvePlaybackCandidates(channel.streamUrl, ContentType.LIVE.name)
 
