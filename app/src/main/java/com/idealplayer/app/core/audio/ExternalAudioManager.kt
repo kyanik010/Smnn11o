@@ -114,8 +114,17 @@ class ExternalAudioManager @Inject constructor(
             )
         }
 
-        // Direct stream attempt first (same as SONIX)
-        startDirectStreamAttempt(gen, channel, playlist)
+        val streamUrl = buildXtreamUrl(channel, playlist)
+        val path = try { java.net.URI(streamUrl).path.orEmpty() } catch (_: Exception) { "" }
+        val extension = path.substringAfterLast('/', "").substringAfterLast('.', "ts").lowercase()
+
+        // Transport-stream and HLS IPTV channels must pass through the audio-only
+        // demux/decode/output pipeline first. Raw AAC/MP3 files can use Media3 directly.
+        if (extension in setOf("ts", "m3u8", "")) {
+            startExtractorFallback(gen, channel, playlist)
+        } else {
+            startDirectStreamAttempt(gen, channel, playlist)
+        }
     }
 
     private fun startDirectStreamAttempt(gen: Long, channel: Channel, playlist: Playlist) {
@@ -136,8 +145,13 @@ class ExternalAudioManager @Inject constructor(
         val playlist = currentActivePlaylist
 
         if (channel != null && playlist != null && !_state.value.isExtractorFallbackActive && retryAttempt >= 2) {
-            // Activate Demuxer + Decoder + Output Engine fallback
             startExtractorFallback(gen, channel, playlist)
+            return
+        }
+        if (channel != null && playlist != null && _state.value.isExtractorFallbackActive && retryAttempt >= 4) {
+            // If extraction repeatedly fails, retain a last-resort audio-only Media3 path.
+            _state.update { it.copy(isExtractorFallbackActive = false) }
+            startDirectStreamAttempt(gen, channel, playlist)
             return
         }
 
