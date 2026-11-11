@@ -145,6 +145,7 @@ import com.idealplayer.app.ui.player.PlayerShellMode
 import com.idealplayer.app.ui.player.PlayerSurfaceHost
 import com.idealplayer.app.ui.player.PlayerSurfaceHostState
 import com.idealplayer.app.ui.player.PlayerViewModel
+import com.idealplayer.app.ui.player.ExternalAudioBottomSheet
 import kotlin.math.roundToInt
 import timber.log.Timber
 
@@ -571,6 +572,8 @@ fun TvPlayerScreen(
     val currentChannelEpgPrograms by viewModel.currentChannelEpgPrograms.collectAsStateWithLifecycle()
     val channelBrowserChannels by viewModel.channelBrowserChannels.collectAsStateWithLifecycle()
     val sleepTimerState by viewModel.sleepTimerState.collectAsStateWithLifecycle()
+    val externalAudioState by viewModel.externalAudioState.collectAsStateWithLifecycle()
+    var showExternalAudioSheet by rememberSaveable { mutableStateOf(false) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
@@ -1579,6 +1582,17 @@ fun TvPlayerScreen(
             }
         }
 
+        if (showExternalAudioSheet) {
+            ExternalAudioBottomSheet(
+                state = externalAudioState,
+                onSelectChannel = { channel -> viewModel.startExternalAudio(channel) },
+                onStopAudio = { viewModel.stopExternalAudio() },
+                onVolumeChange = { volume -> viewModel.setExternalAudioVolume(volume) },
+                onSyncOffsetChange = { offset -> viewModel.setExternalAudioSyncOffset(offset) },
+                onDismiss = { showExternalAudioSheet = false }
+            )
+        }
+
         if (showPlaybackError) {
             TvErrorState(
                 message = liveChannelSwitch.errorMessage
@@ -1805,6 +1819,11 @@ fun TvPlayerScreen(
                         returnTarget = TvPlayerPanel.SETTINGS,
                         preferredSettingsKey = "settings:audio"
                     )
+                },
+                onOpenExternalAudio = {
+                    viewModel.refreshExternalAudioCandidates()
+                    closePanel()
+                    showExternalAudioSheet = true
                 },
                 onOpenSubtitlePanel = {
                     openRemotePanel(
@@ -2969,6 +2988,7 @@ private fun TvPlayerPanelHost(
     onOpenScreenModePanel: () -> Unit,
     onOpenQualityPanel: () -> Unit,
     onOpenAudioPanel: () -> Unit,
+    onOpenExternalAudio: () -> Unit,
     onOpenSubtitlePanel: () -> Unit,
     onOpenSpeedPanel: () -> Unit,
     onOpenSleepTimerPanel: () -> Unit,
@@ -3108,8 +3128,8 @@ private fun TvPlayerPanelHost(
             }
 
             TvPlayerPanel.AUDIO -> {
-                val options = if (playerState.audioTracks.isNotEmpty()) {
-                    playerState.audioTracks.map { track ->
+                val options = buildList {
+                    addAll(playerState.audioTracks.map { track ->
                         TvPanelOption(
                             key = "audio:${track.index}",
                             title = track.name,
@@ -3117,14 +3137,13 @@ private fun TvPlayerPanelHost(
                             selected = track.isSelected,
                             onClick = { onSelectAudio(track.index) }
                         )
-                    }
-                } else {
-                    listOf(
+                    })
+                    add(
                         TvPanelOption(
-                            key = "audio:empty",
-                            title = stringResource(R.string.no_content),
-                            enabled = false,
-                            onClick = {}
+                            key = "audio:external-source",
+                            title = "مصدر صوت خارجي",
+                            subtitle = "beIN SPORTS / ALWAN",
+                            onClick = onOpenExternalAudio
                         )
                     )
                 }
