@@ -34,6 +34,7 @@ class AudioOnlyOutputEngine(
     companion object {
         private const val TAG = "SONIXAudioOutput"
         private const val TIMEOUT_US = 5000L
+        private const val MAX_INPUT_BUFFER_RETRIES = 100
         private const val RECENT_BUFFER_MAX_FRAMES = 60 // ~1.3 seconds burst for instant playback
         const val OUTPUT_CHANNELS = 2 // Always stereo for universal Android hardware encoder compatibility
 
@@ -264,47 +265,60 @@ class AudioOnlyOutputEngine(
     private fun encodePcmWithMediaCodec(encoder: MediaCodec, pcmData: ByteArray, ptsUs: Long) {
         try {
             var offset = 0
+            var noInputBufferAttempts = 0
             while (offset < pcmData.size && isRunning.get()) {
                 val inIndex = encoder.dequeueInputBuffer(TIMEOUT_US)
-                if (inIndex >= 0) {
-                    val inBuf: ByteBuffer? = encoder.getInputBuffer(inIndex)
-                    if (inBuf != null) {
-                        inBuf.clear()
-                        val bytesToPut = (pcmData.size - offset).coerceAtMost(inBuf.remaining())
-                        inBuf.put(pcmData, offset, bytesToPut)
-                        encoder.queueInputBuffer(inIndex, 0, bytesToPut, ptsUs, 0)
-                        offset += bytesToPut
-                    } else {
-                        break
+                if (inIndex < 0) {
+                    drainEncoderOutput(encoder)
+                    noInputBufferAttempts++
+                    if (noInputBufferAttempts >= MAX_INPUT_BUFFER_RETRIES) {
+                        throw IllegalStateException("AAC encoder input buffer remained unavailable")
                     }
-                } else {
-                    break
+                    continue
                 }
-            }
+                noInputBufferAttempts = 0
 
-            val bufferInfo = MediaCodec.BufferInfo()
-            var outIndex = encoder.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
-
-            while (outIndex >= 0) {
-                val outBuf = encoder.getOutputBuffer(outIndex)
-                val isCodecConfig = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
-
-                if (outBuf != null && bufferInfo.size > 0 && !isCodecConfig) {
-                    val rawAac = ByteArray(bufferInfo.size)
-                    outBuf.position(bufferInfo.offset)
-                    outBuf.get(rawAac, 0, bufferInfo.size)
-
-                    val adtsFrame = addAdtsHeader(rawAac, sampleRate, OUTPUT_CHANNELS)
-                    broadcastFrame(adtsFrame)
+                val inBuf = encoder.getInputBuffer(inIndex)
+                if (inBuf == null) {
+                    encoder.queueInputBuffer(inIndex, 0, 0, ptsUs, 0)
+                    throw IllegalStateException("AAC encoder returned a null input buffer")
                 }
-
-                encoder.releaseOutputBuffer(outIndex, false)
-                outIndex = encoder.dequeueOutputBuffer(bufferInfo, 0L)
+                inBuf.clear()
+                val bytesToPut = (pcmData.size - offset).coerceAtMost(inBuf.remaining())
+                if (bytesToPut <= 0) {
+                    encoder.queueInputBuffer(inIndex, 0, 0, ptsUs, 0)
+                    throw IllegalStateException("AAC encoder input buffer has no capacity")
+                }
+                inBuf.put(pcmData, offset, bytesToPut)
+                val bytesPerPcmFrame = OUTPUT_CHANNELS * 2
+                val chunkPtsUs = ptsUs + (offset / bytesPerPcmFrame) * 1_000_000L / sampleRate.coerceAtLeast(1)
+                encoder.queueInputBuffer(inIndex, 0, bytesToPut, chunkPtsUs, 0)
+                offset += bytesToPut
+                drainEncoderOutput(encoder)
             }
+            drainEncoderOutput(encoder)
         } catch (e: Exception) {
             if (isRunning.get()) {
-                AudioLog.w(TAG, "Encoding PCM to AAC failed: ${e.message}")
+                AudioLog.e(TAG, "Encoding PCM to AAC failed: ${e.message}", e)
+                onError?.invoke(AudioErrorCode.AAC_ENCODER_ERROR, e.message ?: "فشل ترميز الصوت")
             }
+        }
+    }
+
+    private fun drainEncoderOutput(encoder: MediaCodec) {
+        val bufferInfo = MediaCodec.BufferInfo()
+        var outIndex = encoder.dequeueOutputBuffer(bufferInfo, 0L)
+        while (outIndex >= 0) {
+            val outBuf = encoder.getOutputBuffer(outIndex)
+            val isCodecConfig = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+            if (outBuf != null && bufferInfo.size > 0 && !isCodecConfig) {
+                val rawAac = ByteArray(bufferInfo.size)
+                outBuf.position(bufferInfo.offset)
+                outBuf.get(rawAac, 0, bufferInfo.size)
+                broadcastFrame(addAdtsHeader(rawAac, sampleRate, OUTPUT_CHANNELS))
+            }
+            encoder.releaseOutputBuffer(outIndex, false)
+            outIndex = encoder.dequeueOutputBuffer(bufferInfo, 0L)
         }
     }
 
