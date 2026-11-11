@@ -436,7 +436,11 @@ class TsAudioDemuxer(
 
                     // Extract channel configuration
                     val channelConfig = ((b2 and 0x01) shl 2) or ((b3 and 0xC0) shr 6)
-                    val channels = if (channelConfig in 1..8) channelConfig else 2
+                    val channels = when (channelConfig) {
+                        in 1..6 -> channelConfig
+                        7 -> 8
+                        else -> 2
+                    }
                     detectedChannels = channels
 
                     // MediaCodec's audio/mp4a-latm decoder consumes AAC access units,
