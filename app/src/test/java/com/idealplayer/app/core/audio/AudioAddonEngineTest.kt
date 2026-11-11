@@ -231,10 +231,9 @@ class AudioAddonEngineTest {
         assertEquals(48000, frame.sampleRate)
         assertEquals(2, frame.channelCount)
         assertEquals("audio/mp4a-latm", frame.mimeType)
-        // Verify ADTS syncword on extracted data (0xFFF)
-        assertEquals(0xFF.toByte(), frame.data[0])
-        assertEquals(0xF0.toByte(), (frame.data[1].toInt() and 0xF0).toByte())
-        assertEquals(validAdts.size, frame.data.size)
+        // ADTS transport headers must be stripped before MediaCodec receives AAC access units.
+        assertEquals(0x55.toByte(), frame.data[0])
+        assertEquals(rawAac.size, frame.data.size)
     }
 
     // =========================================================================
