@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sonix-signed-release-${{ github.ref }}
+  group: sonix-signed-release-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
