@@ -168,6 +168,11 @@ class PlayerViewModel @Inject constructor(
         externalAudioManager.muteVideoAudioAction = { playerManager.muteAudio() }
         externalAudioManager.restoreVideoAudioAction = { playerManager.unMuteAudio() }
         viewModelScope.launch {
+            val savedSettings = settingsDataStore.settings.first()
+            externalAudioManager.setVolume(savedSettings.externalAudioVolume)
+            externalAudioManager.setSyncOffset(savedSettings.externalAudioSyncOffsetMs)
+        }
+        viewModelScope.launch {
             while (true) {
                 delay(500)
                 if (externalAudioState.value.isActive && state.value.isPlaying) {
@@ -764,10 +769,12 @@ class PlayerViewModel @Inject constructor(
 
     fun setExternalAudioVolume(volume: Float) {
         externalAudioManager.setVolume(volume)
+        viewModelScope.launch { settingsDataStore.updateExternalAudioVolume(volume) }
     }
 
     fun setExternalAudioSyncOffset(offsetMs: Long) {
         externalAudioManager.setSyncOffset(offsetMs)
+        viewModelScope.launch { settingsDataStore.updateExternalAudioSyncOffset(offsetMs) }
     }
 
     fun refreshExternalAudioCandidates() {
