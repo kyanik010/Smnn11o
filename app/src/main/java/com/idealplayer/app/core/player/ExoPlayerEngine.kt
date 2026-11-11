@@ -93,6 +93,7 @@ class ExoPlayerEngine @Inject constructor(
     private var subtitlesDisabled = false
     private var preferredVideoQualityMode: VideoQualityMode = VideoQualityMode.AUTO
     private var currentPlaybackSpeed = 1f
+    private var volumeBeforeExternalAudioMute: Float? = null
 
     private var surfaceReady = false
     private var hasVideoTrack = false
@@ -268,23 +269,21 @@ class ExoPlayerEngine @Inject constructor(
 
     override fun muteAudio() {
         runOnMain {
-            player?.volume = 0f
-            val selector = trackSelector ?: return@runOnMain
-            selector.setParameters(
-                selector.buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-            )
+            val activePlayer = player ?: return@runOnMain
+            if (volumeBeforeExternalAudioMute == null) {
+                volumeBeforeExternalAudioMute = activePlayer.volume
+            }
+            // Mute only the video player's output. Do not alter TrackSelector state,
+            // selected audio track, playback timeline, or the active media item.
+            activePlayer.volume = 0f
         }
     }
 
     override fun unMuteAudio() {
         runOnMain {
-            player?.volume = 1f
-            val selector = trackSelector ?: return@runOnMain
-            selector.setParameters(
-                selector.buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
-            )
+            val activePlayer = player ?: return@runOnMain
+            activePlayer.volume = volumeBeforeExternalAudioMute ?: activePlayer.volume
+            volumeBeforeExternalAudioMute = null
         }
     }
 
