@@ -1295,6 +1295,8 @@ fun PlayerScreen(
             externalAudioState = externalAudioState,
             onOpenExternalAudio = {
                 viewModel.refreshExternalAudioCandidates()
+                showSettingsSheet = false
+                playerSettingsInitialSection = null
                 showExternalAudioSheet = true
             },
             isTv = isTv,
