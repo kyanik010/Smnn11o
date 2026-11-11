@@ -96,6 +96,7 @@ object AudioStreamInspector {
                 )
             }
 
+            val effectivePlaylistUrl = connection.url?.toString()?.takeIf { it.isNotBlank() } ?: playlistUrl
             val lines = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).readLines()
             if (lines.none { it.startsWith("#EXTM3U") }) {
                 return AudioInspectionResult(
@@ -114,7 +115,7 @@ object AudioStreamInspector {
                     val uriMatch = Regex("""URI="([^"]+)"""").find(line)
                     if (uriMatch != null) {
                         val rawUri = uriMatch.groupValues[1]
-                        separateAudioUri = resolveRelativeUrl(playlistUrl, rawUri)
+                        separateAudioUri = resolveRelativeUrl(effectivePlaylistUrl, rawUri)
                         break
                     }
                 }
@@ -129,7 +130,7 @@ object AudioStreamInspector {
                     for (j in i + 1 until lines.size) {
                         val nextLine = lines[j].trim()
                         if (nextLine.isNotEmpty() && !nextLine.startsWith("#")) {
-                            firstVariantUri = resolveRelativeUrl(playlistUrl, nextLine)
+                            firstVariantUri = resolveRelativeUrl(effectivePlaylistUrl, nextLine)
                             break
                         }
                     }
