@@ -11,6 +11,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicLong
 
@@ -46,7 +47,12 @@ class ExternalAudioPlayer(
             releasePlayer()
 
             try {
-                val player = ExoPlayer.Builder(context).build().apply {
+                val audioOnlySelector = DefaultTrackSelector(context).apply {
+                    setParameters(buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true))
+                }
+                val player = ExoPlayer.Builder(context)
+                    .setTrackSelector(audioOnlySelector)
+                    .build().apply {
                     val audioAttrs = AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
                         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -137,9 +143,14 @@ class ExternalAudioPlayer(
 
     private fun releasePlayer() {
         exoPlayer?.let { player ->
-            player.stop()
-            player.clearMediaItems()
-            player.release()
+            try {
+                player.stop()
+                player.clearMediaItems()
+            } catch (_: Exception) {
+                // The player may already be in an error or released state.
+            } finally {
+                try { player.release() } catch (_: Exception) {}
+            }
         }
         exoPlayer = null
     }
