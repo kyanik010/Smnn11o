@@ -63,7 +63,7 @@ jobs:
           fi
 
   release:
-    name: Build, sign, and verify ABI APKs
+    name: Build, sign, and verify ARM64 APK
     needs: verify
     if: needs.verify.outputs.signing_ready == 'true'
     runs-on: ubuntu-latest
@@ -130,7 +130,7 @@ jobs:
           find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -printf '%f (%s bytes)\n' | sort
           mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | sort)
           if [[ "${#APKS[@]}" -ne 2 ]]; then
-            echo "::error::Expected exactly 2 ABI APKs, found ${#APKS[@]}."
+            echo "::error::Expected exactly 1 ARM64 APK, found ${#APKS[@]}."
             printf 'Found: %s\n' "${APKS[@]:-<none>}"
             exit 1
           fi
@@ -156,8 +156,7 @@ jobs:
             echo "::group::Inspecting $filename"
 
             case "$filename" in
-              *arm64-v8a*) expected_abi="arm64-v8a" ;;
-              *armeabi-v7a*) expected_abi="armeabi-v7a" ;;
+              app-arm64-v8a-release.apk) expected_abi="arm64-v8a" ;;
               *)
                 echo "::error::Unexpected APK filename: $filename"
                 exit 1
@@ -212,13 +211,15 @@ jobs:
             echo "::endgroup::"
           done
 
-          for required_abi in arm64-v8a armeabi-v7a; do
-            if [[ -z "${SEEN_ABIS[$required_abi]:-}" ]]; then
-              echo "::error::Required ABI APK is missing: $required_abi"
-              exit 1
-            fi
-          done
-          echo "All checks passed: exactly arm64-v8a and armeabi-v7a, signed with the existing upload certificate."
+          if [[ -z "${SEEN_ABIS[arm64-v8a]:-}" ]]; then
+            echo "::error::Required ARM64 APK is missing."
+            exit 1
+          fi
+          if [[ ! -f "$APK_DIR/app-arm64-v8a-release.apk" ]]; then
+            echo "::error::Expected output app-arm64-v8a-release.apk was not generated."
+            exit 1
+          fi
+          echo "All checks passed: exactly app-arm64-v8a-release.apk, containing only arm64-v8a and signed with the existing upload certificate."
 
       - name: Upload signed Release APKs
         uses: actions/upload-artifact@v4
