@@ -161,7 +161,6 @@ fun PlayerScreen(
     val nextLiveChannel = remember(session.availableChannels, liveChannelAnchorId) {
         adjacentLiveChannel(session.availableChannels, liveChannelAnchorId, 1)
     }
-    val showSwitchingOverlay = isChannelSwitching && !playerState.isPlaybackConfirmed
     val showBufferingOverlay = playerState.playbackState == PlaybackState.BUFFERING &&
         !playerState.isPlaybackConfirmed
     val showUpNext = remember(
@@ -664,40 +663,6 @@ fun PlayerScreen(
         }
 
 
-
-        AnimatedVisibility(
-            visible = showSwitchingOverlay,
-            enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(220)),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.82f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = IdealPlayerColors.Primary, modifier = Modifier.size(40.dp))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = stringResource(R.string.player_switching_channel),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color.White
-                    )
-                    if (liveChannelSwitch.targetTitle.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = liveChannelSwitch.targetTitle,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White.copy(alpha = 0.8f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        }
 
         AnimatedVisibility(
             visible = showUpNext,
