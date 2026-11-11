@@ -171,7 +171,12 @@ class PlayerViewModel @Inject constructor(
             while (true) {
                 delay(500)
                 if (externalAudioState.value.isActive && state.value.isPlaying) {
-                    externalAudioManager.syncToVideoPosition(state.value.currentPosition)
+                    val isLive = currentContentType == ContentType.LIVE.name ||
+                        session.value.currentChannel != null
+                    externalAudioManager.syncToVideoPosition(
+                        videoPositionMs = state.value.currentPosition,
+                        isLive = isLive
+                    )
                 }
             }
         }
