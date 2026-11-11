@@ -778,7 +778,8 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun refreshExternalAudioCandidates() {
-        viewModelScope.launch {
+        // Loading and classifying a large IPTV catalog must not run on Compose's UI thread.
+        viewModelScope.launch(Dispatchers.IO) {
             val playlist = playlistRepository.getActivePlaylist().first() ?: return@launch
             val channels = contentRepository.getChannels(playlist.id).first()
             val currentId = session.value.currentChannel?.id

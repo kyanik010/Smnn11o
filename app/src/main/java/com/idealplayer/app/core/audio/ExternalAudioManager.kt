@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.SystemClock
 import com.idealplayer.app.core.model.Channel
 import com.idealplayer.app.core.model.Playlist
+import com.idealplayer.app.core.player.parsePlaybackSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -115,26 +116,24 @@ class ExternalAudioManager @Inject constructor(
             )
         }
 
-        val streamUrl = buildXtreamUrl(channel, playlist)
-        val path = try { java.net.URI(streamUrl).path.orEmpty() } catch (_: Exception) { "" }
-        val lastSegment = path.substringAfterLast('/')
-        val extension = lastSegment.substringAfterLast('.', "").lowercase().ifBlank { "ts" }
-
-        // Transport-stream and HLS IPTV channels must pass through the audio-only
-        // demux/decode/output pipeline first. Raw AAC/MP3 files can use Media3 directly.
-        if (extension in setOf("ts", "m3u8", "")) {
-            startExtractorFallback(gen, channel, playlist)
-        } else {
-            startDirectStreamAttempt(gen, channel, playlist)
-        }
+        // Media3 already supports HLS and MPEG-TS demuxing. The dedicated player
+        // disables video tracks, so it can decode only the selected source's audio.
+        // Bypassing the legacy PCM -> AAC re-encode loop avoids duplicate codec work,
+        // whole-segment buffering, and the custom HLS request path that rejected segments.
+        startDirectStreamAttempt(gen, channel, playlist)
     }
 
     private fun startDirectStreamAttempt(gen: Long, channel: Channel, playlist: Playlist) {
         if (gen != generationId.get() || !_state.value.isActive) return
 
-        val streamUrl = buildXtreamUrl(channel, playlist)
-        val extension = streamExtension(streamUrl)
-        audioPlayer.play(streamUrl, if (extension == "aac") "aac" else if (extension == "mp3") "mp3" else null)
+        val source = parsePlaybackSource(buildXtreamUrl(channel, playlist))
+        val extension = streamExtension(source.url)
+        _state.update { it.copy(isExtractorFallbackActive = false) }
+        audioPlayer.play(
+            source.url,
+            if (extension == "aac") "aac" else if (extension == "mp3") "mp3" else null,
+            source.headers
+        )
     }
 
     private fun scheduleRetry(gen: Long) {
@@ -147,27 +146,12 @@ class ExternalAudioManager @Inject constructor(
         val channel = _state.value.selectedChannel
         val playlist = currentActivePlaylist
 
-        if (channel != null && playlist != null && isExtractionStream(channel) && !_state.value.isExtractorFallbackActive && retryAttempt >= 2) {
-            startExtractorFallback(gen, channel, playlist)
-            return
-        }
-        if (channel != null && playlist != null && _state.value.isExtractorFallbackActive && retryAttempt >= 4) {
-            // If extraction repeatedly fails, retain a last-resort audio-only Media3 path.
-            _state.update { it.copy(isExtractorFallbackActive = false) }
-            startDirectStreamAttempt(gen, channel, playlist)
-            return
-        }
-
         val delayMs = externalAudioRetryDelayMs(retryAttempt)
         _state.update { it.copy(extractionState = AudioExtractionState.STREAM_OPENING) }
 
         val runnable = Runnable {
             if (gen == generationId.get() && _state.value.isActive && channel != null && playlist != null) {
-                if (_state.value.isExtractorFallbackActive) {
-                    startExtractorFallback(gen, channel, playlist)
-                } else {
-                    startDirectStreamAttempt(gen, channel, playlist)
-                }
+                startDirectStreamAttempt(gen, channel, playlist)
             }
         }
         retryRunnable = runnable

@@ -26,6 +26,8 @@ import com.idealplayer.app.core.audio.AudioSourceClassifier
 import com.idealplayer.app.core.audio.ExternalAudioState
 import com.idealplayer.app.core.designsystem.theme.IdealPlayerColors
 import com.idealplayer.app.core.model.Channel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -259,16 +261,23 @@ fun ExternalAudioBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             // Candidate Channels List
-            val filteredChannels = remember(state.availableAudioSources, selectedFilter, searchQuery) {
-                state.availableAudioSources.filter { ch ->
-                    val matchesGroup = when (selectedFilter) {
-                        null -> true
-                        AudioChannelGroup.BEIN_SPORTS -> AudioSourceClassifier.classify(ch.name, ch.groupTitle) == AudioChannelGroup.BEIN_SPORTS
-                        AudioChannelGroup.ALWAN -> AudioSourceClassifier.classify(ch.name, ch.groupTitle) == AudioChannelGroup.ALWAN
-                        else -> true
+            val filteredChannels by produceState(
+                initialValue = emptyList<Channel>(),
+                state.availableAudioSources,
+                selectedFilter,
+                searchQuery
+            ) {
+                value = withContext(Dispatchers.Default) {
+                    state.availableAudioSources.filter { ch ->
+                        val matchesGroup = when (selectedFilter) {
+                            null -> true
+                            AudioChannelGroup.BEIN_SPORTS -> AudioSourceClassifier.classify(ch.name, ch.groupTitle) == AudioChannelGroup.BEIN_SPORTS
+                            AudioChannelGroup.ALWAN -> AudioSourceClassifier.classify(ch.name, ch.groupTitle) == AudioChannelGroup.ALWAN
+                            else -> true
+                        }
+                        val matchesSearch = searchQuery.isBlank() || ch.name.contains(searchQuery, ignoreCase = true)
+                        matchesGroup && matchesSearch
                     }
-                    val matchesSearch = searchQuery.isBlank() || ch.name.contains(searchQuery, ignoreCase = true)
-                    matchesGroup && matchesSearch
                 }
             }
 

@@ -10,6 +10,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import timber.log.Timber
@@ -40,7 +43,7 @@ class ExternalAudioPlayer(
     val duration: Long
         get() = exoPlayer?.duration ?: 0L
 
-    fun play(url: String, mimeType: String? = null) {
+    fun play(url: String, mimeType: String? = null, requestHeaders: Map<String, String> = emptyMap()) {
         val gen = generationId.incrementAndGet()
         mainHandler.post {
             if (gen != generationId.get()) return@post
@@ -50,8 +53,20 @@ class ExternalAudioPlayer(
                 val audioOnlySelector = DefaultTrackSelector(context).apply {
                     setParameters(buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true))
                 }
+                val userAgent = requestHeaders.entries
+                    .firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
+                    ?.value
+                    ?: AudioStreamInspector.USER_AGENT
+                val additionalHeaders = requestHeaders.filterKeys {
+                    !it.equals("User-Agent", ignoreCase = true)
+                }
+                val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+                    .setUserAgent(userAgent)
+                    .setDefaultRequestProperties(additionalHeaders)
+                val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
                 val player = ExoPlayer.Builder(context)
                     .setTrackSelector(audioOnlySelector)
+                    .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
                     .build().apply {
                     val audioAttrs = AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
