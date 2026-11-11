@@ -18,6 +18,10 @@ import kotlin.math.abs
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal const val MAX_EXTERNAL_AUDIO_RETRIES = 5
+internal const val STABLE_PLAYBACK_THRESHOLD_MS = 5_000L
+internal const val BUFFERING_TIMEOUT_MS = 10_000L
+
 internal fun externalAudioRetryDelayMs(attempt: Int): Long {
     val boundedAttempt = attempt.coerceAtLeast(1)
     return when (boundedAttempt) {
@@ -55,7 +59,10 @@ class ExternalAudioManager @Inject constructor(
     val state: StateFlow<ExternalAudioState> = _state.asStateFlow()
 
     private var retryRunnable: Runnable? = null
+    private var bufferingTimeoutRunnable: Runnable? = null
+    private var stablePlaybackRunnable: Runnable? = null
     private var retryAttempt = 0
+    private var isVideoMutedForExternalAudio = false
     private var currentActivePlaylist: Playlist? = null
     @Volatile private var latestVideoPositionMs: Long = 0L
     @Volatile private var currentPlaybackIsLive: Boolean = false
@@ -65,24 +72,106 @@ class ExternalAudioManager @Inject constructor(
     var muteVideoAudioAction: (() -> Unit)? = null
     var restoreVideoAudioAction: (() -> Unit)? = null
 
+    internal fun getRetryAttempt(): Int = retryAttempt
+    internal fun isVideoMuted(): Boolean = isVideoMutedForExternalAudio
+
+    private fun muteVideoAudio() {
+        if (!isVideoMutedForExternalAudio) {
+            isVideoMutedForExternalAudio = true
+            try {
+                muteVideoAudioAction?.invoke()
+            } catch (e: Exception) {
+                Timber.e(e, "Error executing muteVideoAudioAction")
+            }
+        }
+    }
+
+    private fun restoreVideoAudio() {
+        if (isVideoMutedForExternalAudio) {
+            isVideoMutedForExternalAudio = false
+            try {
+                restoreVideoAudioAction?.invoke()
+            } catch (e: Exception) {
+                Timber.e(e, "Error executing restoreVideoAudioAction")
+            }
+        }
+    }
+
+    internal fun handleAudioPlayerBuffering() {
+        val gen = generationId.get()
+        cancelStablePlaybackCheck()
+        _state.update { it.copy(extractionState = AudioExtractionState.STREAM_OPENING) }
+        if (isVideoMutedForExternalAudio) {
+            scheduleBufferingTimeout(gen)
+        }
+    }
+
+    internal fun handleAudioPlayerReady() {
+        // Player is prepared and connected, but audio rendering has not yet begun.
+        // Do NOT mute the primary video audio yet, and do NOT reset retry attempts.
+        _state.update {
+            if (it.extractionState != AudioExtractionState.PLAYING) {
+                it.copy(extractionState = AudioExtractionState.RESOURCE_READY)
+            } else it
+        }
+    }
+
+    internal fun handleAudioPlayerPlaying() {
+        val gen = generationId.get()
+        cancelBufferingTimeout()
+        cancelRetry()
+        muteVideoAudio()
+        _state.update {
+            it.copy(
+                extractionState = AudioExtractionState.PLAYING,
+                errorMessage = null,
+                errorCode = null
+            )
+        }
+        scheduleStablePlaybackCheck(gen)
+    }
+
+    internal fun handleAudioPlayerPaused() {
+        cancelStablePlaybackCheck()
+    }
+
+    internal fun handleAudioPlayerError(errName: String, errMsg: String? = null) {
+        val gen = generationId.get()
+        cancelStablePlaybackCheck()
+        cancelBufferingTimeout()
+        val mappedCode = mapPlaybackExceptionToAudioErrorCode(errName)
+        val detailedMessage = if (!errMsg.isNullOrBlank()) "$errName: $errMsg" else errName
+        Timber.w(
+            "External audio error: %s (attempt %d/%d)",
+            detailedMessage,
+            retryAttempt + 1,
+            MAX_EXTERNAL_AUDIO_RETRIES
+        )
+        _state.update {
+            it.copy(
+                errorMessage = detailedMessage,
+                errorCode = mappedCode
+            )
+        }
+        handleFailureOrRetry(gen, detailedMessage, mappedCode)
+    }
+
+    internal fun handleAudioPlayerEnded() {
+        val gen = generationId.get()
+        cancelStablePlaybackCheck()
+        cancelBufferingTimeout()
+        Timber.i("External audio stream ended (gen=%d)", gen)
+        handleFailureOrRetry(gen, "STREAM_ENDED", AudioErrorCode.SOURCE_TIMEOUT)
+    }
+
     private val audioPlayer = ExternalAudioPlayer(
         context = context,
-        onBuffering = {
-            _state.update { it.copy(extractionState = AudioExtractionState.STREAM_OPENING) }
-        },
-        onPlaying = {
-            retryRunnable?.let(mainHandler::removeCallbacks)
-            retryRunnable = null
-            retryAttempt = 0
-            muteVideoAudioAction?.invoke()
-            _state.update { it.copy(extractionState = AudioExtractionState.PLAYING, errorMessage = null) }
-        },
-        onError = { errName ->
-            scheduleRetry(generationId.get())
-        },
-        onEnded = {
-            scheduleRetry(generationId.get())
-        }
+        onBuffering = ::handleAudioPlayerBuffering,
+        onReady = ::handleAudioPlayerReady,
+        onPlaying = ::handleAudioPlayerPlaying,
+        onPaused = ::handleAudioPlayerPaused,
+        onError = { errName, errMsg, _ -> handleAudioPlayerError(errName, errMsg) },
+        onEnded = ::handleAudioPlayerEnded
     )
 
     fun populateCandidates(channels: List<Channel>, currentPlayingChannelId: Long?) {
@@ -101,8 +190,9 @@ class ExternalAudioManager @Inject constructor(
         sessionManager.stopCurrentSession()
         currentActivePlaylist = playlist
         val gen = generationId.incrementAndGet()
-        retryRunnable?.let(mainHandler::removeCallbacks)
-        retryRunnable = null
+        cancelRetry()
+        cancelBufferingTimeout()
+        cancelStablePlaybackCheck()
         retryAttempt = 0
 
         _state.update {
@@ -116,10 +206,6 @@ class ExternalAudioManager @Inject constructor(
             )
         }
 
-        // Media3 already supports HLS and MPEG-TS demuxing. The dedicated player
-        // disables video tracks, so it can decode only the selected source's audio.
-        // Bypassing the legacy PCM -> AAC re-encode loop avoids duplicate codec work,
-        // whole-segment buffering, and the custom HLS request path that rejected segments.
         startDirectStreamAttempt(gen, channel, playlist)
     }
 
@@ -136,23 +222,66 @@ class ExternalAudioManager @Inject constructor(
         )
     }
 
-    private fun scheduleRetry(gen: Long) {
+    private fun handleFailureOrRetry(gen: Long, reason: String, errorCode: AudioErrorCode) {
         if (gen != generationId.get() || !_state.value.isActive) return
-        // Keep the primary video muted while the selected external source reconnects.
-        // Restoring it here causes audible source-flapping: original video audio returns
-        // during every retry, then is muted again as soon as the secondary player is ready.
+
+        if (retryAttempt >= MAX_EXTERNAL_AUDIO_RETRIES) {
+            handlePersistentFailure(gen, reason, errorCode)
+        } else {
+            scheduleRetry(gen, reason)
+        }
+    }
+
+    private fun handlePersistentFailure(gen: Long, reason: String, errorCode: AudioErrorCode) {
+        if (gen != generationId.get() || !_state.value.isActive) return
+
+        Timber.e(
+            "External audio persistent failure reached after %d attempts: %s. Restoring primary video audio.",
+            retryAttempt,
+            reason
+        )
+
+        cancelRetry()
+        cancelBufferingTimeout()
+        cancelStablePlaybackCheck()
+
         audioPlayer.stop()
 
-        Timber.w(
-            "External audio reconnect scheduled: attempt=%d selectedChannelId=%s",
-            retryAttempt + 1,
-            _state.value.selectedChannel?.id
-        )
-        retryAttempt = (retryAttempt + 1).coerceAtMost(6)
+        // Critical: Restore primary video audio upon persistent failure
+        restoreVideoAudio()
+
+        _state.update {
+            it.copy(
+                extractionState = AudioExtractionState.FAILED_GENERAL,
+                errorMessage = reason,
+                errorCode = errorCode
+            )
+        }
+    }
+
+    private fun scheduleRetry(gen: Long, reason: String = "RETRY") {
+        if (gen != generationId.get() || !_state.value.isActive) return
+
+        cancelRetry()
+        cancelBufferingTimeout()
+        cancelStablePlaybackCheck()
+
+        audioPlayer.stop()
+
+        retryAttempt++
         val channel = _state.value.selectedChannel
         val playlist = currentActivePlaylist
 
         val delayMs = externalAudioRetryDelayMs(retryAttempt)
+        Timber.w(
+            "External audio reconnect scheduled: attempt=%d/%d delay=%dms reason=%s selectedChannelId=%s",
+            retryAttempt,
+            MAX_EXTERNAL_AUDIO_RETRIES,
+            delayMs,
+            reason,
+            channel?.id
+        )
+
         _state.update { it.copy(extractionState = AudioExtractionState.STREAM_OPENING) }
 
         val runnable = Runnable {
@@ -162,6 +291,62 @@ class ExternalAudioManager @Inject constructor(
         }
         retryRunnable = runnable
         mainHandler.postDelayed(runnable, delayMs)
+    }
+
+    private fun scheduleBufferingTimeout(gen: Long) {
+        cancelBufferingTimeout()
+        val runnable = Runnable {
+            if (gen == generationId.get() && _state.value.isActive && _state.value.extractionState == AudioExtractionState.STREAM_OPENING) {
+                Timber.w("External audio buffering timed out after %d ms", BUFFERING_TIMEOUT_MS)
+                handleFailureOrRetry(gen, "BUFFERING_TIMEOUT", AudioErrorCode.SOURCE_TIMEOUT)
+            }
+        }
+        bufferingTimeoutRunnable = runnable
+        mainHandler.postDelayed(runnable, BUFFERING_TIMEOUT_MS)
+    }
+
+    private fun cancelBufferingTimeout() {
+        bufferingTimeoutRunnable?.let(mainHandler::removeCallbacks)
+        bufferingTimeoutRunnable = null
+    }
+
+    private fun scheduleStablePlaybackCheck(gen: Long) {
+        cancelStablePlaybackCheck()
+        val runnable = Runnable {
+            if (gen == generationId.get() && _state.value.isActive && _state.value.extractionState == AudioExtractionState.PLAYING) {
+                Timber.d("External audio confirmed stable after %d ms. Resetting retry attempt count.", STABLE_PLAYBACK_THRESHOLD_MS)
+                retryAttempt = 0
+            }
+        }
+        stablePlaybackRunnable = runnable
+        mainHandler.postDelayed(runnable, STABLE_PLAYBACK_THRESHOLD_MS)
+    }
+
+    private fun cancelStablePlaybackCheck() {
+        stablePlaybackRunnable?.let(mainHandler::removeCallbacks)
+        stablePlaybackRunnable = null
+    }
+
+    private fun cancelRetry() {
+        retryRunnable?.let(mainHandler::removeCallbacks)
+        retryRunnable = null
+    }
+
+    private fun mapPlaybackExceptionToAudioErrorCode(errorCodeName: String): AudioErrorCode {
+        return when {
+            errorCodeName.contains("NETWORK") || errorCodeName.contains("TIMEOUT") ->
+                AudioErrorCode.SOURCE_TIMEOUT
+            errorCodeName.contains("IO") ->
+                AudioErrorCode.SOURCE_HTTP_ERROR
+            errorCodeName.contains("PARSER") || errorCodeName.contains("CONTAINER") || errorCodeName.contains("MALFORMED") ->
+                AudioErrorCode.TS_DEMUX_ERROR
+            errorCodeName.contains("DECODER") ->
+                AudioErrorCode.DECODER_INIT_ERROR
+            errorCodeName.contains("AUTH") || errorCodeName.contains("FORBIDDEN") ->
+                AudioErrorCode.SOURCE_AUTH_ERROR
+            else ->
+                AudioErrorCode.MEDIA3_PLAYBACK_ERROR
+        }
     }
 
     private fun startExtractorFallback(gen: Long, channel: Channel, playlist: Playlist) {
@@ -194,13 +379,13 @@ class ExternalAudioManager @Inject constructor(
                         retryAttempt = 0
                         audioPlayer.play(readyUrl, "aac")
                     } else if (errCode != null) {
-                        scheduleRetry(gen)
+                        handleFailureOrRetry(gen, message ?: "FALLBACK_ERROR", errCode)
                     }
                 }
             }
         } catch (e: Exception) {
             Timber.e(e, "Fallback extraction failed")
-            scheduleRetry(gen)
+            handleFailureOrRetry(gen, e.message ?: "FALLBACK_EXCEPTION", AudioErrorCode.SOURCE_HTTP_ERROR)
         }
     }
 
@@ -282,14 +467,15 @@ class ExternalAudioManager @Inject constructor(
 
     fun stop() {
         generationId.incrementAndGet()
-        retryRunnable?.let(mainHandler::removeCallbacks)
-        retryRunnable = null
+        cancelRetry()
+        cancelBufferingTimeout()
+        cancelStablePlaybackCheck()
         retryAttempt = 0
 
         audioPlayer.stop()
         sessionManager.stopCurrentSession()
 
-        restoreVideoAudioAction?.invoke()
+        restoreVideoAudio()
 
         _state.update {
             it.copy(

@@ -15,6 +15,8 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicLong
 
@@ -22,14 +24,18 @@ import java.util.concurrent.atomic.AtomicLong
  * Dedicated secondary player exclusively for external audio streams.
  * Completely isolated from the main video player lifecycle.
  */
+@OptIn(UnstableApi::class)
 class ExternalAudioPlayer(
     private val context: Context,
     private val onBuffering: () -> Unit,
+    private val onReady: () -> Unit = {},
     private val onPlaying: () -> Unit,
-    private val onError: (errorName: String) -> Unit,
+    private val onPaused: () -> Unit = {},
+    private val onError: (errorName: String, errorMessage: String?, exception: PlaybackException?) -> Unit,
     private val onEnded: () -> Unit
 ) {
     private var exoPlayer: ExoPlayer? = null
+    private var activeListener: Player.Listener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val generationId = AtomicLong(0)
     private var currentVolume = 1.0f
@@ -77,12 +83,12 @@ class ExternalAudioPlayer(
                 }
                 exoPlayer = player
 
-                player.addListener(object : Player.Listener {
+                val listener = object : Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (gen != generationId.get() || exoPlayer !== player) return
                         when (state) {
                             Player.STATE_BUFFERING -> onBuffering()
-                            Player.STATE_READY -> onPlaying()
+                            Player.STATE_READY -> onReady()
                             Player.STATE_ENDED -> onEnded()
                             Player.STATE_IDLE -> Unit
                         }
@@ -92,15 +98,19 @@ class ExternalAudioPlayer(
                         if (gen != generationId.get() || exoPlayer !== player) return
                         if (isPlaying) {
                             onPlaying()
+                        } else {
+                            onPaused()
                         }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
                         if (gen != generationId.get() || exoPlayer !== player) return
-                        Timber.w("ExternalAudioPlayer error: ${error.errorCodeName}")
-                        onError(error.errorCodeName)
+                        Timber.w("ExternalAudioPlayer error: ${error.errorCodeName} - ${error.message}")
+                        onError(error.errorCodeName, error.message, error)
                     }
-                })
+                }
+                activeListener = listener
+                player.addListener(listener)
 
                 val mediaItemBuilder = MediaItem.Builder().setUri(Uri.parse(url))
                 when (mimeType) {
@@ -113,7 +123,7 @@ class ExternalAudioPlayer(
                 player.play()
             } catch (e: Exception) {
                 Timber.e(e, "Could not initialize ExternalAudioPlayer")
-                onError(e.message ?: "INIT_FAILED")
+                onError("INIT_FAILED", e.message, null)
             }
         }
     }
@@ -159,8 +169,15 @@ class ExternalAudioPlayer(
     }
 
     private fun releasePlayer() {
-        exoPlayer?.let { player ->
+        val player = exoPlayer
+        val listener = activeListener
+        activeListener = null
+        exoPlayer = null
+        if (player != null) {
             try {
+                if (listener != null) {
+                    player.removeListener(listener)
+                }
                 player.stop()
                 player.clearMediaItems()
             } catch (_: Exception) {
@@ -169,6 +186,5 @@ class ExternalAudioPlayer(
                 try { player.release() } catch (_: Exception) {}
             }
         }
-        exoPlayer = null
     }
 }
