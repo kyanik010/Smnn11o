@@ -169,6 +169,15 @@ class PlayerViewModel @Inject constructor(
         externalAudioManager.restoreVideoAudioAction = { playerManager.unMuteAudio() }
         viewModelScope.launch {
             while (true) {
+                delay(500)
+                if (externalAudioState.value.isActive && state.value.isPlaying) {
+                    externalAudioManager.syncToVideoPosition(state.value.currentPosition)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            while (true) {
                 delay(15_000)
                 // Progress is also persisted on pause/stop/lifecycle events. Avoid waking the
                 // database every fifteen seconds while the player is idle, buffering, or paused.
@@ -722,6 +731,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun exitPlayer(onBack: () -> Unit) {
+        externalAudioManager.stop()
         viewModelScope.launch(Dispatchers.IO) {
             saveProgressInternal()
         }
@@ -765,7 +775,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        externalAudioManager.release()
+        externalAudioManager.stop()
 
         super.onCleared()
         livePlaybackJob?.cancel()
