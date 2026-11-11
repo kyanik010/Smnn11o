@@ -191,14 +191,18 @@ class AudioDecoderEngine(
 
     private fun looksLikeTransportStream(data: ByteArray, length: Int): Boolean {
         if (length < TsAudioDemuxer.TS_PACKET_SIZE) return false
-        val maxOffset = minOf(TsAudioDemuxer.TS_PACKET_SIZE - 1, length - 1)
+        val maxOffset = minOf(TsAudioDemuxer.TS_PACKET_SIZE * 2 - 1, length - TsAudioDemuxer.TS_PACKET_SIZE)
+        if (maxOffset < 0) return data[0] == TsAudioDemuxer.TS_SYNC_BYTE
         for (offset in 0..maxOffset) {
             if (data[offset] != TsAudioDemuxer.TS_SYNC_BYTE) continue
-            if (offset + TsAudioDemuxer.TS_PACKET_SIZE < length &&
-                data[offset + TsAudioDemuxer.TS_PACKET_SIZE] == TsAudioDemuxer.TS_SYNC_BYTE
-            ) return true
+            val nextSync = offset + TsAudioDemuxer.TS_PACKET_SIZE
+            if (nextSync < length) {
+                if (data[nextSync] == TsAudioDemuxer.TS_SYNC_BYTE) return true
+            } else if (offset + TsAudioDemuxer.TS_PACKET_SIZE <= length) {
+                return true
+            }
         }
-        return data[0] == TsAudioDemuxer.TS_SYNC_BYTE
+        return false
     }
 
     private fun completeAdtsBytes(data: ByteArray): Int {
