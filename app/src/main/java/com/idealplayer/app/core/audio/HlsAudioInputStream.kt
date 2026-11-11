@@ -74,6 +74,9 @@ internal class HlsAudioInputStream(
                 if (lines.any { it.startsWith("#EXT-X-MAP:") }) {
                     throw IOException("Fragmented MP4/CMAF HLS is not supported by the MPEG-TS demuxer")
                 }
+                if (lines.any { it.startsWith("#EXT-X-BYTERANGE:") }) {
+                    throw IOException("HLS byte-range segments are not supported by the current segment reader")
+                }
 
                 val mediaSequence = lines.firstOrNull { it.startsWith("#EXT-X-MEDIA-SEQUENCE:") }
                     ?.substringAfter(':')?.toLongOrNull() ?: 0L
