@@ -1055,21 +1055,8 @@ fun TvPlayerScreen(
     }
 
     LaunchedEffect(liveChannelSwitch.errorMessage) {
-        if (!liveChannelSwitch.errorMessage.isNullOrBlank()) {
-            if (isLivePlayback && session.availableChannels.isNotEmpty()) {
-                clearTransientZapFeedback()
-                releaseFocusBeforeStructureChange("opening failed-channel browser")
-                requestedOverlayAction = TvOverlayAction.CHANNELS
-                overlayVisible = true
-                activePanel = TvPlayerPanel.CHANNELS
-                channelPanelGroup = session.liveGroup
-                    .takeIf { it.isNotBlank() }
-                    ?: session.currentChannel?.groupTitle?.takeIf { it.isNotBlank() }
-                viewModel.loadChannelBrowser(channelPanelGroup)
-                registerInteraction()
-            } else {
-                showOverlay(defaultOverlayAction)
-            }
+        if (!liveChannelSwitch.errorMessage.isNullOrBlank() && !isLivePlayback) {
+            showOverlay(defaultOverlayAction)
         }
     }
 

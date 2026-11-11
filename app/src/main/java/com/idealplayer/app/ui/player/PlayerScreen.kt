@@ -315,17 +315,6 @@ fun PlayerScreen(
         viewModel.loadEpgForChannel(currentChannel)
     }
 
-    LaunchedEffect(liveChannelSwitch.errorMessage, isLivePlayback, session.availableChannels) {
-        if (
-            !liveChannelSwitch.errorMessage.isNullOrBlank() &&
-            isLivePlayback &&
-            session.availableChannels.isNotEmpty()
-        ) {
-            showChannelSheet = true
-            controlsVisible = true
-        }
-    }
-
     LaunchedEffect(showChannelSheet, session.availableChannels) {
         if (showChannelSheet && session.availableChannels.isNotEmpty()) {
             viewModel.loadEpgForChannels(session.availableChannels)
