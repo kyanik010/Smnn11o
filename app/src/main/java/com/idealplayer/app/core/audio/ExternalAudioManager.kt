@@ -57,6 +57,7 @@ class ExternalAudioManager @Inject constructor(
     private var retryAttempt = 0
     private var currentActivePlaylist: Playlist? = null
     @Volatile private var latestVideoPositionMs: Long = 0L
+    @Volatile private var currentPlaybackIsLive: Boolean = false
     private var lastSyncAtMs: Long = 0L
 
     // Callbacks to mute/restore video audio
@@ -240,18 +241,28 @@ class ExternalAudioManager @Inject constructor(
     }
 
     fun setSyncOffset(offsetMs: Long) {
+        val previousOffset = _state.value.syncOffsetMs
         val clamped = offsetMs.coerceIn(-10000L, 10000L)
         _state.update { it.copy(syncOffsetMs = clamped) }
-        syncToVideoPosition(latestVideoPositionMs, force = true)
+        if (currentPlaybackIsLive) {
+            // A live window position is not an absolute VOD timestamp. Apply only the
+            // user's relative adjustment to the external stream's own timeline.
+            val delta = clamped - previousOffset
+            audioPlayer.seekTo((audioPlayer.currentPosition - delta).coerceAtLeast(0L))
+        } else {
+            syncToVideoPosition(latestVideoPositionMs, isLive = false, force = true)
+        }
     }
 
     /**
-     * Keep the independent audio timeline aligned with the authoritative video timeline.
-     * Positive offset means audio trails video. Small drift is ignored to avoid audible seeks.
+     * Keep seekable VOD timelines aligned. Live IPTV windows have independent origins,
+     * so they must not be hard-seeked to the video's elapsed position.
      */
-    fun syncToVideoPosition(videoPositionMs: Long, force: Boolean = false) {
+    fun syncToVideoPosition(videoPositionMs: Long, isLive: Boolean = false, force: Boolean = false) {
+        currentPlaybackIsLive = isLive
         if (!_state.value.isActive || _state.value.extractionState !in setOf(AudioExtractionState.PLAYING, AudioExtractionState.RESOURCE_READY)) return
         latestVideoPositionMs = videoPositionMs.coerceAtLeast(0L)
+        if (isLive) return
         val now = SystemClock.elapsedRealtime()
         if (!force && now - lastSyncAtMs < 1500L) return
 
