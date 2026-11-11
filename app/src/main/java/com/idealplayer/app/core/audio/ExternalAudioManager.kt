@@ -140,6 +140,8 @@ class ExternalAudioManager @Inject constructor(
     private fun scheduleRetry(gen: Long) {
         if (gen != generationId.get() || !_state.value.isActive) return
         audioPlayer.stop()
+        // Do not leave the primary video muted while the secondary stream is reconnecting.
+        restoreVideoAudioAction?.invoke()
 
         retryAttempt = (retryAttempt + 1).coerceAtMost(6)
         val channel = _state.value.selectedChannel
