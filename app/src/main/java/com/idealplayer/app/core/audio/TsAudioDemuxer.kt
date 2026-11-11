@@ -439,8 +439,17 @@ class TsAudioDemuxer(
                     val channels = if (channelConfig in 1..8) channelConfig else 2
                     detectedChannels = channels
 
-                    val frameData = ByteArray(frameLen)
-                    System.arraycopy(esData, i, frameData, 0, frameLen)
+                    // MediaCodec's audio/mp4a-latm decoder consumes AAC access units,
+                    // not ADTS transport headers. Strip the 7/9-byte ADTS header and provide
+                    // AudioSpecificConfig through MediaFormat csd-0 in AudioDecoderEngine.
+                    val headerLength = if ((b1 and 0x01) != 0) 7 else 9
+                    if (frameLen <= headerLength) {
+                        i++
+                        continue
+                    }
+                    val payloadLength = frameLen - headerLength
+                    val frameData = ByteArray(payloadLength)
+                    System.arraycopy(esData, i + headerLength, frameData, 0, payloadLength)
 
                     frames.add(
                         ExtractedAudioFrame(
