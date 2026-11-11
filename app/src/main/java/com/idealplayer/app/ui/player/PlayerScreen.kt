@@ -1277,6 +1277,17 @@ fun PlayerScreen(
         )
     }
 
+    if (showExternalAudioSheet) {
+        ExternalAudioBottomSheet(
+            state = externalAudioState,
+            onSelectChannel = { channel -> viewModel.startExternalAudio(channel) },
+            onStopAudio = { viewModel.stopExternalAudio() },
+            onVolumeChange = { volume -> viewModel.setExternalAudioVolume(volume) },
+            onSyncOffsetChange = { offset -> viewModel.setExternalAudioSyncOffset(offset) },
+            onDismiss = { showExternalAudioSheet = false }
+        )
+    }
+
     if (showSettingsSheet) {
         PlayerSettingsSheet(
             playerState = playerState,
