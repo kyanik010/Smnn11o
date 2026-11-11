@@ -3,6 +3,7 @@ package com.idealplayer.app.core.audio
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.idealplayer.app.core.model.Channel
 import com.idealplayer.app.core.model.Playlist
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -54,6 +56,8 @@ class ExternalAudioManager @Inject constructor(
     private var retryRunnable: Runnable? = null
     private var retryAttempt = 0
     private var currentActivePlaylist: Playlist? = null
+    @Volatile private var latestVideoPositionMs: Long = 0L
+    private var lastSyncAtMs: Long = 0L
 
     // Callbacks to mute/restore video audio
     var muteVideoAudioAction: (() -> Unit)? = null
@@ -92,6 +96,7 @@ class ExternalAudioManager @Inject constructor(
     }
 
     fun startExternalAudio(channel: Channel, playlist: Playlist) {
+        sessionManager.stopCurrentSession()
         currentActivePlaylist = playlist
         val gen = generationId.incrementAndGet()
         retryRunnable?.let(mainHandler::removeCallbacks)
@@ -213,13 +218,29 @@ class ExternalAudioManager @Inject constructor(
     fun setSyncOffset(offsetMs: Long) {
         val clamped = offsetMs.coerceIn(-10000L, 10000L)
         _state.update { it.copy(syncOffsetMs = clamped) }
-        applySyncOffset(clamped)
+        syncToVideoPosition(latestVideoPositionMs, force = true)
     }
 
-    private fun applySyncOffset(offsetMs: Long) {
+    /**
+     * Keep the independent audio timeline aligned with the authoritative video timeline.
+     * Positive offset means audio trails video. Small drift is ignored to avoid audible seeks.
+     */
+    fun syncToVideoPosition(videoPositionMs: Long, force: Boolean = false) {
+        if (!_state.value.isActive || _state.value.extractionState !in setOf(AudioExtractionState.PLAYING, AudioExtractionState.RESOURCE_READY)) return
+        latestVideoPositionMs = videoPositionMs.coerceAtLeast(0L)
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastSyncAtMs < 1500L) return
+
+        val target = ExternalAudioSyncPolicy.targetPositionMs(
+            videoPositionMs = latestVideoPositionMs,
+            offsetMs = _state.value.syncOffsetMs,
+            audioDurationMs = audioPlayer.duration
+        )
         val current = audioPlayer.currentPosition
-        val target = (current - offsetMs).coerceAtLeast(0L)
-        audioPlayer.seekTo(target)
+        if (abs(current - target) >= 900L) {
+            lastSyncAtMs = now
+            audioPlayer.seekTo(target)
+        }
     }
 
     fun pause() {
@@ -256,10 +277,9 @@ class ExternalAudioManager @Inject constructor(
     }
 
     fun release() {
+        // This manager is a process-wide @Singleton. ViewModel teardown must stop the
+        // current session, but must not shut down its reusable session executor.
         stop()
-        sessionManager.shutdown()
         currentActivePlaylist = null
-        muteVideoAudioAction = null
-        restoreVideoAudioAction = null
     }
 }
