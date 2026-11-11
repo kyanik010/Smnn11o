@@ -116,7 +116,8 @@ class ExternalAudioManager @Inject constructor(
 
         val streamUrl = buildXtreamUrl(channel, playlist)
         val path = try { java.net.URI(streamUrl).path.orEmpty() } catch (_: Exception) { "" }
-        val extension = path.substringAfterLast('/', "").substringAfterLast('.', "ts").lowercase()
+        val lastSegment = path.substringAfterLast('/')
+        val extension = lastSegment.substringAfterLast('.', "").lowercase().ifBlank { "ts" }
 
         // Transport-stream and HLS IPTV channels must pass through the audio-only
         // demux/decode/output pipeline first. Raw AAC/MP3 files can use Media3 directly.
