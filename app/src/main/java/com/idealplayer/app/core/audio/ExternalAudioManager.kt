@@ -138,10 +138,16 @@ class ExternalAudioManager @Inject constructor(
 
     private fun scheduleRetry(gen: Long) {
         if (gen != generationId.get() || !_state.value.isActive) return
+        // Keep the primary video muted while the selected external source reconnects.
+        // Restoring it here causes audible source-flapping: original video audio returns
+        // during every retry, then is muted again as soon as the secondary player is ready.
         audioPlayer.stop()
-        // Do not leave the primary video muted while the secondary stream is reconnecting.
-        restoreVideoAudioAction?.invoke()
 
+        Timber.w(
+            "External audio reconnect scheduled: attempt=%d selectedChannelId=%s",
+            retryAttempt + 1,
+            _state.value.selectedChannel?.id
+        )
         retryAttempt = (retryAttempt + 1).coerceAtMost(6)
         val channel = _state.value.selectedChannel
         val playlist = currentActivePlaylist
