@@ -428,7 +428,7 @@ class TsAudioDemuxer(
                 val b5 = esData[i + 5].toInt() and 0xFF
 
                 val frameLen = ((b3 and 0x03) shl 11) or (b4 shl 3) or ((b5 and 0xE0) shr 5)
-                if (frameLen in 7..4096 && i + frameLen <= esData.size) {
+                if (frameLen in 7..8191 && i + frameLen <= esData.size) {
                     // Extract sampling frequency index
                     val freqIdx = (b2 and 0x3C) shr 2
                     val sampleRate = if (freqIdx in ADTS_FREQUENCIES.indices) ADTS_FREQUENCIES[freqIdx] else 48000
