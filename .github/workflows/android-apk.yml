@@ -129,7 +129,7 @@ jobs:
           echo "APK files found:"
           find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' -printf '%f (%s bytes)\n' | sort
           mapfile -t APKS < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | sort)
-          if [[ "${#APKS[@]}" -ne 2 ]]; then
+          if [[ "${#APKS[@]}" -ne 1 ]]; then
             echo "::error::Expected exactly 1 ARM64 APK, found ${#APKS[@]}."
             printf 'Found: %s\n' "${APKS[@]:-<none>}"
             exit 1

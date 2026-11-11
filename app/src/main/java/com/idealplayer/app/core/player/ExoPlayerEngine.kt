@@ -109,6 +109,9 @@ class ExoPlayerEngine @Inject constructor(
     private val _playerInstance = MutableStateFlow<ExoPlayer?>(null)
     val playerInstance: StateFlow<ExoPlayer?> = _playerInstance.asStateFlow()
 
+    private fun videoAudioOutputVolume(): Float =
+        if (volumeBeforeExternalAudioMute == null) 1f else 0f
+
     private inline fun runOnMain(crossinline block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             block()
@@ -171,7 +174,7 @@ class ExoPlayerEngine @Inject constructor(
             // be followed by another playWhenReady=false assignment that pauses the new item.
             exoPlayer.playWhenReady = false
             exoPlayer.setMediaSource(buildMediaSource(mediaItem, source))
-            exoPlayer.volume = 1f
+            exoPlayer.volume = videoAudioOutputVolume()
             exoPlayer.prepare()
 
             if (startPosition > 0L) {
@@ -556,7 +559,7 @@ class ExoPlayerEngine @Inject constructor(
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
             .apply {
-                volume = 1f
+                volume = videoAudioOutputVolume()
                 setPlaybackSpeed(currentPlaybackSpeed)
             }
 
@@ -1190,7 +1193,7 @@ class ExoPlayerEngine @Inject constructor(
                     TrackSelectionOverride(firstAudioGroup.mediaTrackGroup, firstSupportedTrack)
                 )
         )
-        player?.volume = 1f
+        player?.volume = videoAudioOutputVolume()
     }
 
     private fun updateQualityInfo(tracks: Tracks) {
