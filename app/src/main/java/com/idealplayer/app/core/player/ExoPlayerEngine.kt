@@ -266,6 +266,28 @@ class ExoPlayerEngine @Inject constructor(
         }
     }
 
+    override fun muteAudio() {
+        runOnMain {
+            player?.volume = 0f
+            val selector = trackSelector ?: return@runOnMain
+            selector.setParameters(
+                selector.buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+            )
+        }
+    }
+
+    override fun unMuteAudio() {
+        runOnMain {
+            player?.volume = 1f
+            val selector = trackSelector ?: return@runOnMain
+            selector.setParameters(
+                selector.buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            )
+        }
+    }
+
     override fun selectAudioTrack(index: Int) {
         runOnMain {
             val selection = findTrackSelection(C.TRACK_TYPE_AUDIO, index) ?: return@runOnMain

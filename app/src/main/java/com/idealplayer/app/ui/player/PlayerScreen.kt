@@ -1,4 +1,5 @@
 package com.idealplayer.app.ui.player
+import com.idealplayer.app.core.audio.ExternalAudioState
 
 import android.app.Activity
 import android.view.ViewGroup
@@ -90,6 +91,8 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val playerState by viewModel.state.collectAsStateWithLifecycle()
+    val externalAudioState by viewModel.externalAudioState.collectAsStateWithLifecycle()
+    var showExternalAudioSheet by rememberSaveable { mutableStateOf(false) }
     val diagnostics by viewModel.diagnostics.collectAsStateWithLifecycle()
     val playerReady by viewModel.playerReady.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -1278,6 +1281,11 @@ fun PlayerScreen(
         PlayerSettingsSheet(
             playerState = playerState,
             diagnostics = diagnostics,
+            externalAudioState = externalAudioState,
+            onOpenExternalAudio = {
+                viewModel.refreshExternalAudioCandidates()
+                showExternalAudioSheet = true
+            },
             isTv = isTv,
             initialSection = playerSettingsInitialSection,
             isLivePlayback = isLivePlayback,
@@ -1933,6 +1941,8 @@ private fun playerPlaybackStateLabel(state: PlaybackState): String = stringResou
 private fun PlayerSettingsSheet(
     playerState: PlayerState,
     diagnostics: PlaybackDiagnostics,
+    externalAudioState: ExternalAudioState,
+    onOpenExternalAudio: () -> Unit,
     isTv: Boolean,
     initialSection: String?,
     isLivePlayback: Boolean,
@@ -1970,6 +1980,8 @@ private fun PlayerSettingsSheet(
                     PlayerSettingsContent(
                         playerState = playerState,
                         diagnostics = diagnostics,
+                        externalAudioState = externalAudioState,
+                        onOpenExternalAudio = onOpenExternalAudio,
                         isTv = true,
                         isLivePlayback = isLivePlayback,
                         sleepTimerRemaining = sleepTimerRemaining,
@@ -2009,6 +2021,8 @@ private fun PlayerSettingsSheet(
         PlayerSettingsContent(
             playerState = playerState,
             diagnostics = diagnostics,
+            externalAudioState = externalAudioState,
+            onOpenExternalAudio = onOpenExternalAudio,
             isTv = false,
             isLivePlayback = isLivePlayback,
             sleepTimerRemaining = sleepTimerRemaining,
@@ -2033,6 +2047,8 @@ private fun PlayerSettingsSheet(
 private fun PlayerSettingsContent(
     playerState: PlayerState,
     diagnostics: PlaybackDiagnostics,
+    externalAudioState: ExternalAudioState,
+    onOpenExternalAudio: () -> Unit,
     isTv: Boolean,
     isLivePlayback: Boolean,
     sleepTimerRemaining: String?,
@@ -2090,6 +2106,19 @@ private fun PlayerSettingsContent(
                             subtitle = "${playerState.playbackSpeed}x",
                             isTv = isTv,
                             onClick = { onSectionChange("speed") }
+                        )
+                    }
+
+                    // External Audio (SONIX)
+                    item {
+                        SettingsMenuItem(
+                            icon = Icons.Filled.Headphones,
+                            title = "صوت خارجي (SONIX)",
+                            subtitle = if (externalAudioState.isActive) externalAudioState.selectedChannel?.name ?: "مفعّل" else "غير مفعّل",
+                            isTv = isTv,
+                            onClick = {
+                                onOpenExternalAudio()
+                            }
                         )
                     }
 

@@ -467,6 +467,14 @@ class PlayerManager @Inject constructor(
         }
     }
 
+    fun muteAudio() {
+        currentEngine?.muteAudio()
+    }
+
+    fun unMuteAudio() {
+        currentEngine?.unMuteAudio()
+    }
+
     suspend fun selectAudioTrack(index: Int) {
         withContext(Dispatchers.Main.immediate) {
             if (_playerState.value.audioTracks.any { it.index == index }) {
