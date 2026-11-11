@@ -57,6 +57,8 @@ class AudioDecoderEngine(
 
         var currentCodec: MediaCodec? = null
         var activeMimeType = defaultMimeType
+        var isTransportStream = false
+        var rawAdtsCarry = ByteArray(0)
 
         val demuxer = TsAudioDemuxer(
             onFrameExtracted = { frame ->
@@ -111,19 +113,34 @@ class AudioDecoderEngine(
                 val bytesRead = bufferedInput.read(buffer)
                 if (bytesRead <= 0) break
 
-                val isTs = buffer.isNotEmpty() && buffer[0] == TsAudioDemuxer.TS_SYNC_BYTE
-                if (isTs) {
+                if (!isTransportStream && looksLikeTransportStream(buffer, bytesRead)) {
+                    isTransportStream = true
+                }
+                if (isTransportStream) {
                     try {
                         demuxer.processTsData(buffer, bytesRead)
                     } catch (e: Exception) {
                         AudioLog.w(TAG, "Non-fatal TS demux error in chunk: ${e.message}")
                     }
                 } else {
-                    // Raw audio stream (e.g. direct AAC ADTS or MP3)
-                    val rawFrames: List<ExtractedAudioFrame> = extractRawAdtsFrames(buffer, bytesRead, detectedSampleRate, detectedChannels)
+                    // Raw AAC ADTS may split across socket reads. Keep the incomplete
+                    // trailing frame and only submit complete AAC access units to MediaCodec.
+                    val combined = rawAdtsCarry + buffer.copyOfRange(0, bytesRead)
+                    val rawFrames = extractRawAdtsFrames(combined, combined.size, detectedSampleRate, detectedChannels)
+                    val consumed = completeAdtsBytes(combined)
+                    rawAdtsCarry = if (consumed < combined.size) {
+                        combined.copyOfRange(consumed, combined.size)
+                    } else {
+                        ByteArray(0)
+                    }
+                    if (rawAdtsCarry.size > MAX_RAW_CARRY_BYTES) {
+                        rawAdtsCarry = rawAdtsCarry.copyOfRange(rawAdtsCarry.size - 7, rawAdtsCarry.size)
+                    }
                     for (frame in rawFrames) {
                         if (!isRunning.get()) break
-                        if (currentCodec == null) {
+                        if (currentCodec == null || activeMimeType != frame.mimeType) {
+                            try { currentCodec?.stop(); currentCodec?.release() } catch (_: Exception) {}
+                            activeMimeType = frame.mimeType
                             currentCodec = createAndStartDecoder(activeMimeType, frame.sampleRate, frame.channelCount)
                             if (currentCodec == null) {
                                 onError(AudioErrorCode.DECODER_UNAVAILABLE, "فشل تهيئة مفكك ترميز $activeMimeType")
@@ -172,6 +189,40 @@ class AudioDecoderEngine(
         }
     }
 
+    private fun looksLikeTransportStream(data: ByteArray, length: Int): Boolean {
+        if (length < TsAudioDemuxer.TS_PACKET_SIZE) return false
+        val maxOffset = minOf(TsAudioDemuxer.TS_PACKET_SIZE - 1, length - 1)
+        for (offset in 0..maxOffset) {
+            if (data[offset] != TsAudioDemuxer.TS_SYNC_BYTE) continue
+            if (offset + TsAudioDemuxer.TS_PACKET_SIZE < length &&
+                data[offset + TsAudioDemuxer.TS_PACKET_SIZE] == TsAudioDemuxer.TS_SYNC_BYTE
+            ) return true
+        }
+        return data[0] == TsAudioDemuxer.TS_SYNC_BYTE
+    }
+
+    private fun completeAdtsBytes(data: ByteArray): Int {
+        var index = 0
+        var lastComplete = 0
+        while (index + 7 <= data.size) {
+            if ((data[index].toInt() and 0xff) == 0xff &&
+                (data[index + 1].toInt() and 0xf6) == 0xf0
+            ) {
+                val frameLength = ((data[index + 3].toInt() and 0x03) shl 11) or
+                    ((data[index + 4].toInt() and 0xff) shl 3) or
+                    ((data[index + 5].toInt() and 0xe0) shr 5)
+                if (frameLength in 7..8191) {
+                    if (index + frameLength > data.size) break
+                    index += frameLength
+                    lastComplete = index
+                    continue
+                }
+            }
+            index++
+        }
+        return lastComplete
+    }
+
     private fun createAndStartDecoder(mimeType: String, sampleRate: Int, channels: Int): MediaCodec? {
         return try {
             val codec = MediaCodec.createDecoderByType(mimeType)
@@ -205,16 +256,25 @@ class AudioDecoderEngine(
         if (frameData.isEmpty()) return
 
         try {
-            val inIndex = codec.dequeueInputBuffer(TIMEOUT_US)
-            if (inIndex >= 0) {
-                val inputBuffer: ByteBuffer? = codec.getInputBuffer(inIndex)
-                inputBuffer?.clear()
-                if (inputBuffer != null) {
-                    val bytesToPut = frameData.size.coerceAtMost(inputBuffer.remaining())
-                    inputBuffer.put(frameData, 0, bytesToPut)
-                    codec.queueInputBuffer(inIndex, 0, bytesToPut, ptsUs, 0)
-                }
+            var inIndex = codec.dequeueInputBuffer(TIMEOUT_US)
+            while (isRunning.get() && inIndex < 0) {
+                drainAvailableOutput(codec)
+                inIndex = codec.dequeueInputBuffer(TIMEOUT_US)
             }
+            if (inIndex < 0 || !isRunning.get()) return
+
+            val inputBuffer: ByteBuffer? = codec.getInputBuffer(inIndex)
+            if (inputBuffer == null) {
+                codec.queueInputBuffer(inIndex, 0, 0, ptsUs, 0)
+                return
+            }
+            inputBuffer.clear()
+            if (frameData.size > inputBuffer.remaining()) {
+                codec.queueInputBuffer(inIndex, 0, 0, ptsUs, 0)
+                throw IllegalArgumentException("AAC/MP3 access unit exceeds MediaCodec input buffer: ${frameData.size} bytes")
+            }
+            inputBuffer.put(frameData)
+            codec.queueInputBuffer(inIndex, 0, frameData.size, ptsUs, 0)
 
             val bufferInfo = MediaCodec.BufferInfo()
             var outIndex = codec.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
@@ -256,6 +316,30 @@ class AudioDecoderEngine(
         }
     }
 
+    private fun drainAvailableOutput(codec: MediaCodec) {
+        val info = MediaCodec.BufferInfo()
+        var index = codec.dequeueOutputBuffer(info, 0L)
+        while (index >= 0) {
+            val output = codec.getOutputBuffer(index)
+            if (output != null && info.size > 0) {
+                val pcm = ByteArray(info.size)
+                output.position(info.offset)
+                output.get(pcm, 0, info.size)
+                totalPcmBytesProduced += pcm.size
+                totalPcmSamplesProduced += pcm.size / (2 * detectedChannels.coerceAtLeast(1))
+                onPcmDecoded(pcm, detectedSampleRate, detectedChannels, info.presentationTimeUs)
+            }
+            codec.releaseOutputBuffer(index, false)
+            index = codec.dequeueOutputBuffer(info, 0L)
+        }
+        if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+            val format = codec.outputFormat
+            detectedSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            detectedChannels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            onFormatDiscovered?.invoke(detectedSampleRate, detectedChannels, detectedMimeType)
+        }
+    }
+
     private fun flushDecoder(codec: MediaCodec) {
         try {
             val bufferInfo = MediaCodec.BufferInfo()
@@ -277,6 +361,7 @@ class AudioDecoderEngine(
     companion object {
         private const val TAG = "SONIXAudioDecoder"
         private const val TIMEOUT_US = 10_000L
+        private const val MAX_RAW_CARRY_BYTES = 65_536
 
         fun getFreqIndex(sampleRate: Int): Int = when (sampleRate) {
             96000 -> 0; 88200 -> 1; 64000 -> 2; 48000 -> 3; 44100 -> 4
@@ -314,8 +399,13 @@ class AudioDecoderEngine(
                                 ((data[i + 3].toInt() and 0xC0) shr 6)
                         val channels = if (channelConfig in 1..8) channelConfig else fallbackChannels
 
-                        val frame = ByteArray(frameLength)
-                        System.arraycopy(data, i, frame, 0, frameLength)
+                        val headerLength = if ((data[i + 1].toInt() and 0x01) != 0) 7 else 9
+                        if (frameLength <= headerLength) {
+                            i++
+                            continue
+                        }
+                        val frame = ByteArray(frameLength - headerLength)
+                        System.arraycopy(data, i + headerLength, frame, 0, frame.size)
                         frames.add(
                             ExtractedAudioFrame(
                                 data = frame,
