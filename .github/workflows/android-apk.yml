@@ -6,6 +6,7 @@ on:
     branches:
       - sync/idealplayer-official-missing-files
       - fix/sonix-external-audio-complete
+      - fix/startup-crash-lifecycle
   workflow_dispatch:
 
 permissions:
