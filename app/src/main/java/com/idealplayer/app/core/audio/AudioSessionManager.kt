@@ -33,6 +33,7 @@ class AudioSessionManager {
         val decoderEngine: AudioDecoderEngine,
         @Volatile var workerFuture: Future<*>? = null,
         @Volatile var connection: HttpURLConnection? = null,
+        @Volatile var sourceInput: InputStream? = null,
         val isReady: AtomicBoolean = AtomicBoolean(false),
         val isCancelled: AtomicBoolean = AtomicBoolean(false)
     )
@@ -147,22 +148,6 @@ class AudioSessionManager {
 
             val targetUrl = inspection.hlsAudioOnlyUrl ?: session.sourceUrl
 
-            // Open HTTP connection with automatic redirects and safe headers
-            activeConnection = AudioStreamInspector.openHttpConnectionWithRedirects(targetUrl)
-            session.connection = activeConnection
-
-            val responseCode = activeConnection.responseCode
-            if (responseCode !in 200..299) {
-                val err = if (responseCode in listOf(401, 403)) AudioErrorCode.SOURCE_AUTH_ERROR else AudioErrorCode.SOURCE_HTTP_ERROR
-                onStateChange(
-                    AudioExtractionState.FAILED_GENERAL,
-                    "فشل الاتصال بالبث (HTTP $responseCode)",
-                    err,
-                    null
-                )
-                return
-            }
-
             if (session.isCancelled.get()) return
 
             onStateChange(
@@ -178,10 +163,32 @@ class AudioSessionManager {
                 null
             )
 
-            val inputStream: InputStream = activeConnection.inputStream
+            // HLS is consumed as a rolling sequence of media segments. A master playlist
+            // is resolved by AudioStreamInspector to its audio rendition or first variant.
+            val inputStream: InputStream = if (inspection.containerType.startsWith("HLS")) {
+                HlsAudioInputStream(targetUrl)
+            } else {
+                activeConnection = AudioStreamInspector.openHttpConnectionWithRedirects(targetUrl)
+                session.connection = activeConnection
+                val responseCode = activeConnection.responseCode
+                if (responseCode !in 200..299) {
+                    val err = if (responseCode in listOf(401, 403)) AudioErrorCode.SOURCE_AUTH_ERROR else AudioErrorCode.SOURCE_HTTP_ERROR
+                    onStateChange(
+                        AudioExtractionState.FAILED_GENERAL,
+                        "فشل الاتصال بالبث (HTTP $responseCode)",
+                        err,
+                        null
+                    )
+                    return
+                }
+                activeConnection.inputStream
+            }
+            session.sourceInput = inputStream
 
-            // Process audio through the demuxing and decoding pipeline
-            session.decoderEngine.processStream(inputStream, inspection.audioMimeType)
+            // Process audio through the demuxing and decoding pipeline.
+            inputStream.use {
+                session.decoderEngine.processStream(it, inspection.audioMimeType)
+            }
 
         } catch (e: InterruptedException) {
             // Clean cancellation
@@ -198,6 +205,8 @@ class AudioSessionManager {
                 )
             }
         } finally {
+            try { session.sourceInput?.close() } catch (_: Exception) {}
+            session.sourceInput = null
             try { activeConnection?.disconnect() } catch (_: Exception) {}
         }
     }
@@ -209,6 +218,7 @@ class AudioSessionManager {
         try {
             current.workerFuture?.cancel(true)
             current.connection?.disconnect()
+            try { current.sourceInput?.close() } catch (_: Exception) {}
             current.decoderEngine.stop()
             current.outputEngine.stop()
         } catch (e: Exception) {
