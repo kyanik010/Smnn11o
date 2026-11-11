@@ -176,12 +176,12 @@ android {
         }
     }
 
-    // Produce two APKs only: arm64-v8a and armeabi-v7a. No universal APK.
+    // Produce exactly one ABI APK: arm64-v8a. No universal APK.
     splits {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a")
+            include("arm64-v8a")
             isUniversalApk = false
         }
     }
