@@ -59,6 +59,7 @@ class AudioDecoderEngine(
         var activeMimeType = defaultMimeType
         var isTransportStream = false
         var rawAdtsCarry = ByteArray(0)
+        var rawNextPtsUs = 0L
 
         val demuxer = TsAudioDemuxer(
             onFrameExtracted = { frame ->
@@ -138,6 +139,8 @@ class AudioDecoderEngine(
                     }
                     for (frame in rawFrames) {
                         if (!isRunning.get()) break
+                        val timestampedFrame = frame.copy(ptsUs = rawNextPtsUs)
+                        rawNextPtsUs += 1024L * 1_000_000L / frame.sampleRate.coerceAtLeast(1)
                         if (currentCodec == null || activeMimeType != frame.mimeType) {
                             try { currentCodec?.stop(); currentCodec?.release() } catch (_: Exception) {}
                             activeMimeType = frame.mimeType
@@ -148,7 +151,7 @@ class AudioDecoderEngine(
                                 break
                             }
                         }
-                        currentCodec?.let { decodeFrame(it, frame.data, frame.ptsUs) }
+                        currentCodec?.let { decodeFrame(it, timestampedFrame.data, timestampedFrame.ptsUs) }
                     }
                 }
             }
