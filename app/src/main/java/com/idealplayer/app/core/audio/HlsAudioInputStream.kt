@@ -20,6 +20,7 @@ internal class HlsAudioInputStream(
 ) : InputStream() {
     private val closed = AtomicBoolean(false)
     private var currentSegment: ByteArrayInputStream? = null
+    @Volatile private var activeConnection: HttpURLConnection? = null
     private var lastSequence = -1L
     private var endListReached = false
     private var emptyRefreshes = 0
@@ -57,6 +58,7 @@ internal class HlsAudioInputStream(
             var connection: HttpURLConnection? = null
             try {
                 connection = AudioStreamInspector.openHttpConnectionWithRedirects(playlistUrl)
+                activeConnection = connection
                 val code = connection.responseCode
                 if (code !in 200..299) throw IOException("HLS playlist HTTP $code")
 
@@ -97,6 +99,7 @@ internal class HlsAudioInputStream(
                 for ((sequence, segmentUrl) in newSegments) {
                     if (closed.get()) return
                     val segmentConnection = AudioStreamInspector.openHttpConnectionWithRedirects(segmentUrl)
+                    activeConnection = segmentConnection
                     try {
                         val segmentCode = segmentConnection.responseCode
                         if (segmentCode !in 200..299) throw IOException("HLS segment HTTP $segmentCode")
@@ -122,6 +125,7 @@ internal class HlsAudioInputStream(
                         }
                         lastSequence = sequence
                     } finally {
+                        if (activeConnection === segmentConnection) activeConnection = null
                         segmentConnection.disconnect()
                     }
                 }
@@ -129,6 +133,7 @@ internal class HlsAudioInputStream(
                 endListReached = lines.any { it == "#EXT-X-ENDLIST" } && currentSegment == null
                 if (!endListReached) Thread.sleep(refreshDelayMs)
             } finally {
+                if (activeConnection === connection) activeConnection = null
                 try { connection?.disconnect() } catch (_: Exception) {}
             }
         }
@@ -138,6 +143,8 @@ internal class HlsAudioInputStream(
         if (!closed.compareAndSet(false, true)) return
         try { currentSegment?.close() } catch (_: Exception) {}
         currentSegment = null
+        try { activeConnection?.disconnect() } catch (_: Exception) {}
+        activeConnection = null
     }
 
     companion object {
