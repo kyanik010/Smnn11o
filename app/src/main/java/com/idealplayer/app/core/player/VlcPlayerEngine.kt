@@ -364,28 +364,6 @@ class VlcPlayerEngine @Inject constructor(
         publishState()
     }
 
-    private var isMutedForExternalAudio = false
-    private var volumeBeforeExternalAudio = 100
-
-    override fun muteAudio() {
-        val player = mediaPlayer ?: return
-        if (!isMutedForExternalAudio) {
-            volumeBeforeExternalAudio = player.volume
-            isMutedForExternalAudio = true
-        }
-        player.volume = 0
-    }
-
-    override fun unMuteAudio() {
-        val player = mediaPlayer ?: return
-        if (isMutedForExternalAudio) {
-            player.volume = volumeBeforeExternalAudio
-            isMutedForExternalAudio = false
-        } else {
-            player.volume = 100
-        }
-    }
-
     override fun selectAudioTrack(index: Int) {
         val player = mediaPlayer ?: return
         val tracks = player.audioTracks ?: return
