@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [main, fix/startup-crash-lifecycle]
+    branches: [main]
   pull_request:
 
 permissions:
