@@ -93,7 +93,6 @@ class ExoPlayerEngine @Inject constructor(
     private var subtitlesDisabled = false
     private var preferredVideoQualityMode: VideoQualityMode = VideoQualityMode.AUTO
     private var currentPlaybackSpeed = 1f
-    private var volumeBeforeExternalAudioMute: Float? = null
 
     private var surfaceReady = false
     private var hasVideoTrack = false
@@ -108,9 +107,6 @@ class ExoPlayerEngine @Inject constructor(
 
     private val _playerInstance = MutableStateFlow<ExoPlayer?>(null)
     val playerInstance: StateFlow<ExoPlayer?> = _playerInstance.asStateFlow()
-
-    private fun videoAudioOutputVolume(): Float =
-        if (volumeBeforeExternalAudioMute == null) 1f else 0f
 
     private inline fun runOnMain(crossinline block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -174,7 +170,7 @@ class ExoPlayerEngine @Inject constructor(
             // be followed by another playWhenReady=false assignment that pauses the new item.
             exoPlayer.playWhenReady = false
             exoPlayer.setMediaSource(buildMediaSource(mediaItem, source))
-            exoPlayer.volume = videoAudioOutputVolume()
+            exoPlayer.volume = 1f
             exoPlayer.prepare()
 
             if (startPosition > 0L) {
@@ -267,26 +263,6 @@ class ExoPlayerEngine @Inject constructor(
         runOnMain {
             player?.setPlaybackSpeed(speed)
             publishPlayerState()
-        }
-    }
-
-    override fun muteAudio() {
-        runOnMain {
-            val activePlayer = player ?: return@runOnMain
-            if (volumeBeforeExternalAudioMute == null) {
-                volumeBeforeExternalAudioMute = activePlayer.volume
-            }
-            // Mute only the video player's output. Do not alter TrackSelector state,
-            // selected audio track, playback timeline, or the active media item.
-            activePlayer.volume = 0f
-        }
-    }
-
-    override fun unMuteAudio() {
-        runOnMain {
-            val activePlayer = player ?: return@runOnMain
-            activePlayer.volume = volumeBeforeExternalAudioMute ?: activePlayer.volume
-            volumeBeforeExternalAudioMute = null
         }
     }
 
@@ -559,7 +535,7 @@ class ExoPlayerEngine @Inject constructor(
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
             .apply {
-                volume = videoAudioOutputVolume()
+                volume = 1f
                 setPlaybackSpeed(currentPlaybackSpeed)
             }
 
@@ -1193,7 +1169,7 @@ class ExoPlayerEngine @Inject constructor(
                     TrackSelectionOverride(firstAudioGroup.mediaTrackGroup, firstSupportedTrack)
                 )
         )
-        player?.volume = videoAudioOutputVolume()
+        player?.volume = 1f
     }
 
     private fun updateQualityInfo(tracks: Tracks) {
