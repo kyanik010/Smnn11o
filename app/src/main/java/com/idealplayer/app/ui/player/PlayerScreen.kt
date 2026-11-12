@@ -1,5 +1,4 @@
 package com.idealplayer.app.ui.player
-import com.idealplayer.app.core.audio.ExternalAudioState
 
 import android.app.Activity
 import android.view.ViewGroup
@@ -43,13 +42,11 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -91,8 +88,6 @@ fun PlayerScreen(
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val playerState by viewModel.state.collectAsStateWithLifecycle()
-    val externalAudioState by viewModel.externalAudioState.collectAsStateWithLifecycle()
-    var showExternalAudioSheet by rememberSaveable { mutableStateOf(false) }
     val diagnostics by viewModel.diagnostics.collectAsStateWithLifecycle()
     val playerReady by viewModel.playerReady.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -161,6 +156,7 @@ fun PlayerScreen(
     val nextLiveChannel = remember(session.availableChannels, liveChannelAnchorId) {
         adjacentLiveChannel(session.availableChannels, liveChannelAnchorId, 1)
     }
+    val showSwitchingOverlay = isChannelSwitching && !playerState.isPlaybackConfirmed
     val showBufferingOverlay = playerState.playbackState == PlaybackState.BUFFERING &&
         !playerState.isPlaybackConfirmed
     val showUpNext = remember(
@@ -312,6 +308,17 @@ fun PlayerScreen(
     val currentChannel = session.currentChannel
     LaunchedEffect(currentChannel?.id, currentChannel?.epgChannelId, currentChannel?.name) {
         viewModel.loadEpgForChannel(currentChannel)
+    }
+
+    LaunchedEffect(liveChannelSwitch.errorMessage, isLivePlayback, session.availableChannels) {
+        if (
+            !liveChannelSwitch.errorMessage.isNullOrBlank() &&
+            isLivePlayback &&
+            session.availableChannels.isNotEmpty()
+        ) {
+            showChannelSheet = true
+            controlsVisible = true
+        }
     }
 
     LaunchedEffect(showChannelSheet, session.availableChannels) {
@@ -665,6 +672,40 @@ fun PlayerScreen(
 
 
         AnimatedVisibility(
+            visible = showSwitchingOverlay,
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(220)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.82f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = IdealPlayerColors.Primary, modifier = Modifier.size(40.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = stringResource(R.string.player_switching_channel),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color.White
+                    )
+                    if (liveChannelSwitch.targetTitle.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = liveChannelSwitch.targetTitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(
             visible = showUpNext,
             enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 3 },
             exit = fadeOut(tween(180)) + slideOutVertically(tween(180)) { it / 2 },
@@ -881,64 +922,62 @@ fun PlayerScreen(
                 }
 
                 // Center play/pause controls
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Row(
-                        modifier = Modifier.align(Alignment.Center),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(if (isTv) 40.dp else 28.dp)
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (isTv) 40.dp else 28.dp)
+                ) {
+                    if (isLivePlayback && !isTv) {
+                        PlayerControlButton(
+                            icon = Icons.Filled.SkipPrevious,
+                            contentDescription = stringResource(R.string.previous_channel),
+                            size = 40.dp,
+                            onClick = { viewModel.playPreviousChannel() },
+                            modifier = Modifier.alpha(
+                                if (previousLiveChannel != null) 1f else 0.45f
+                            )
+                        )
+                    } else {
+                        PlayerControlButton(icon = Icons.Filled.Replay10, contentDescription = stringResource(
+                            R.string.seek_backward_short,
+                            (settings.seekBackwardMs / 1_000L).coerceAtLeast(1L)
+                        ),
+                            size = if (isTv) 48.dp else 40.dp,
+                            onClick = { viewModel.seekBackward() })
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.togglePlayPause() },
+                        modifier = Modifier
+                            .size(if (isTv) 72.dp else 56.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            .focusRequester(playPauseFocusRequester)
                     ) {
-                        if (isLivePlayback && !isTv) {
-                            PlayerControlButton(
-                                icon = Icons.Filled.SkipPrevious,
-                                contentDescription = stringResource(R.string.previous_channel),
-                                size = 40.dp,
-                                onClick = { viewModel.playPreviousChannel() },
-                                modifier = Modifier.alpha(
-                                    if (previousLiveChannel != null) 1f else 0.45f
-                                )
-                            )
-                        } else {
-                            PlayerControlButton(icon = Icons.Filled.Replay10, contentDescription = stringResource(
-                                R.string.seek_backward_short,
-                                (settings.seekBackwardMs / 1_000L).coerceAtLeast(1L)
-                            ),
-                                size = if (isTv) 48.dp else 40.dp,
-                                onClick = { viewModel.seekBackward() })
-                        }
+                        Icon(
+                            imageVector = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (playerState.isPlaying) stringResource(R.string.action_pause) else stringResource(R.string.action_play),
+                            tint = Color.White,
+                            modifier = Modifier.size(if (isTv) 48.dp else 40.dp)
+                        )
+                    }
 
-                        IconButton(
-                            onClick = { viewModel.togglePlayPause() },
-                            modifier = Modifier
-                                .size(if (isTv) 72.dp else 56.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                                .focusRequester(playPauseFocusRequester)
-                        ) {
-                            Icon(
-                                imageVector = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (playerState.isPlaying) stringResource(R.string.action_pause) else stringResource(R.string.action_play),
-                                tint = Color.White,
-                                modifier = Modifier.size(if (isTv) 48.dp else 40.dp)
+                    if (isLivePlayback && !isTv) {
+                        PlayerControlButton(
+                            icon = Icons.Filled.SkipNext,
+                            contentDescription = stringResource(R.string.next_channel),
+                            size = 40.dp,
+                            onClick = { viewModel.playNextChannel() },
+                            modifier = Modifier.alpha(
+                                if (nextLiveChannel != null) 1f else 0.45f
                             )
-                        }
-
-                        if (isLivePlayback && !isTv) {
-                            PlayerControlButton(
-                                icon = Icons.Filled.SkipNext,
-                                contentDescription = stringResource(R.string.next_channel),
-                                size = 40.dp,
-                                onClick = { viewModel.playNextChannel() },
-                                modifier = Modifier.alpha(
-                                    if (nextLiveChannel != null) 1f else 0.45f
-                                )
-                            )
-                        } else {
-                            PlayerControlButton(icon = Icons.Filled.Forward10, contentDescription = stringResource(
-                                R.string.seek_forward_short,
-                                (settings.seekForwardMs / 1_000L).coerceAtLeast(1L)
-                            ),
-                                size = if (isTv) 48.dp else 40.dp,
-                                onClick = { viewModel.seekForward() })
-                        }
+                        )
+                    } else {
+                        PlayerControlButton(icon = Icons.Filled.Forward10, contentDescription = stringResource(
+                            R.string.seek_forward_short,
+                            (settings.seekForwardMs / 1_000L).coerceAtLeast(1L)
+                        ),
+                            size = if (isTv) 48.dp else 40.dp,
+                            onClick = { viewModel.seekForward() })
                     }
                 }
 
@@ -963,48 +1002,46 @@ fun PlayerScreen(
                         } else {
                             playerState.currentPosition
                         }.coerceIn(0L, playerState.duration)
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(StringUtils.formatDuration(displayedPosition),
-                                    style = MaterialTheme.typography.labelSmall, color = Color.White)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Box(modifier = Modifier.weight(1f)) {
-                                    Slider(
-                                        value = (displayedPosition.toDouble() / playerState.duration.toDouble())
-                                            .toFloat()
-                                            .coerceIn(0f, 1f),
-                                        onValueChange = { fraction ->
-                                            isScrubbing = true
-                                            pendingSeekPosition = null
-                                            scrubPosition = (fraction.coerceIn(0f, 1f) * playerState.duration)
-                                                .toLong()
-                                                .coerceIn(0L, playerState.duration)
-                                        },
-                                        onValueChangeFinished = {
-                                            if (isScrubbing) {
-                                                val target = scrubPosition.coerceIn(0L, playerState.duration)
-                                                isScrubbing = false
-                                                pendingSeekPosition = target
-                                                viewModel.seekTo(target)
-                                            }
-                                        },
-                                        enabled = playerState.isSeekable,
-                                        valueRange = 0f..1f,
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = IdealPlayerColors.Primary,
-                                            activeTrackColor = IdealPlayerColors.Primary,
-                                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                                        ),
-                                        modifier = Modifier.focusable()
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(StringUtils.formatDuration(playerState.duration),
-                                    style = MaterialTheme.typography.labelSmall, color = Color.White)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(StringUtils.formatDuration(displayedPosition),
+                                style = MaterialTheme.typography.labelSmall, color = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(modifier = Modifier.weight(1f)) {
+                                Slider(
+                                    value = (displayedPosition.toDouble() / playerState.duration.toDouble())
+                                        .toFloat()
+                                        .coerceIn(0f, 1f),
+                                    onValueChange = { fraction ->
+                                        isScrubbing = true
+                                        pendingSeekPosition = null
+                                        scrubPosition = (fraction.coerceIn(0f, 1f) * playerState.duration)
+                                            .toLong()
+                                            .coerceIn(0L, playerState.duration)
+                                    },
+                                    onValueChangeFinished = {
+                                        if (isScrubbing) {
+                                            val target = scrubPosition.coerceIn(0L, playerState.duration)
+                                            isScrubbing = false
+                                            pendingSeekPosition = target
+                                            viewModel.seekTo(target)
+                                        }
+                                    },
+                                    enabled = playerState.isSeekable,
+                                    valueRange = 0f..1f,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = IdealPlayerColors.Primary,
+                                        activeTrackColor = IdealPlayerColors.Primary,
+                                        inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                    ),
+                                    modifier = Modifier.focusable()
+                                )
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(StringUtils.formatDuration(playerState.duration),
+                                style = MaterialTheme.typography.labelSmall, color = Color.White)
                         }
                     }
 
@@ -1231,28 +1268,10 @@ fun PlayerScreen(
         )
     }
 
-    if (showExternalAudioSheet) {
-        ExternalAudioBottomSheet(
-            state = externalAudioState,
-            onSelectChannel = { channel -> viewModel.startExternalAudio(channel) },
-            onStopAudio = { viewModel.stopExternalAudio() },
-            onVolumeChange = { volume -> viewModel.setExternalAudioVolume(volume) },
-            onSyncOffsetChange = { offset -> viewModel.setExternalAudioSyncOffset(offset) },
-            onDismiss = { showExternalAudioSheet = false }
-        )
-    }
-
     if (showSettingsSheet) {
         PlayerSettingsSheet(
             playerState = playerState,
             diagnostics = diagnostics,
-            externalAudioState = externalAudioState,
-            onOpenExternalAudio = {
-                viewModel.refreshExternalAudioCandidates()
-                showSettingsSheet = false
-                playerSettingsInitialSection = null
-                showExternalAudioSheet = true
-            },
             isTv = isTv,
             initialSection = playerSettingsInitialSection,
             isLivePlayback = isLivePlayback,
@@ -1565,50 +1584,48 @@ private fun A2TouchTransportRow(
     onSeekForward: () -> Unit,
     onNextContent: () -> Unit
 ) {
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(A2Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            A2PlayerControlButton(
-                icon = Icons.Filled.SkipPrevious,
-                contentDescription = stringResource(
-                    if (isLivePlayback) R.string.previous_channel else R.string.previous_episode
-                ),
-                onClick = onPreviousContent,
-                enabled = previousContentEnabled && (isLivePlayback || isSeriesPlayback)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(A2Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        A2PlayerControlButton(
+            icon = Icons.Filled.SkipPrevious,
+            contentDescription = stringResource(
+                if (isLivePlayback) R.string.previous_channel else R.string.previous_episode
+            ),
+            onClick = onPreviousContent,
+            enabled = previousContentEnabled && (isLivePlayback || isSeriesPlayback)
+        )
+        A2PlayerControlButton(
+            icon = Icons.Filled.Replay10,
+            contentDescription = stringResource(R.string.seek_backward_short, seekBackwardSeconds),
+            onClick = onSeekBackward,
+            enabled = seekable
+        )
+        A2PlayerControlButton(
+            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            contentDescription = stringResource(
+                if (isPlaying) R.string.action_pause else R.string.action_play
+            ),
+            onClick = onPlayPause,
+            stateDescription = stringResource(
+                if (isPlaying) R.string.player_playing_feedback else R.string.player_paused_feedback
             )
-            A2PlayerControlButton(
-                icon = Icons.Filled.Replay10,
-                contentDescription = stringResource(R.string.seek_backward_short, seekBackwardSeconds),
-                onClick = onSeekBackward,
-                enabled = seekable
-            )
-            A2PlayerControlButton(
-                icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = stringResource(
-                    if (isPlaying) R.string.action_pause else R.string.action_play
-                ),
-                onClick = onPlayPause,
-                stateDescription = stringResource(
-                    if (isPlaying) R.string.player_playing_feedback else R.string.player_paused_feedback
-                )
-            )
-            A2PlayerControlButton(
-                icon = Icons.Filled.Forward10,
-                contentDescription = stringResource(R.string.seek_forward_short, seekForwardSeconds),
-                onClick = onSeekForward,
-                enabled = seekable
-            )
-            A2PlayerControlButton(
-                icon = Icons.Filled.SkipNext,
-                contentDescription = stringResource(
-                    if (isLivePlayback) R.string.next_channel else R.string.next_episode
-                ),
-                onClick = onNextContent,
-                enabled = nextContentEnabled && (isLivePlayback || isSeriesPlayback)
-            )
-        }
+        )
+        A2PlayerControlButton(
+            icon = Icons.Filled.Forward10,
+            contentDescription = stringResource(R.string.seek_forward_short, seekForwardSeconds),
+            onClick = onSeekForward,
+            enabled = seekable
+        )
+        A2PlayerControlButton(
+            icon = Icons.Filled.SkipNext,
+            contentDescription = stringResource(
+                if (isLivePlayback) R.string.next_channel else R.string.next_episode
+            ),
+            onClick = onNextContent,
+            enabled = nextContentEnabled && (isLivePlayback || isSeriesPlayback)
+        )
     }
 }
 
@@ -1631,83 +1648,81 @@ private fun A2TouchPlayerTimeline(
     val trackHeight = if (tablet) 6.dp else 4.dp
     val touchHeight = if (tablet) 34.dp else 28.dp
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Column(
-            modifier = modifier.height(if (tablet) 64.dp else 48.dp),
-            verticalArrangement = Arrangement.Center
+    Column(
+        modifier = modifier.height(if (tablet) 64.dp else 48.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(touchHeight),
+            contentAlignment = Alignment.CenterStart
         ) {
-            BoxWithConstraints(
-                modifier = Modifier
+            Box(
+                Modifier
                     .fillMaxWidth()
-                    .height(touchHeight),
-                contentAlignment = Alignment.CenterStart
-            ) {
+                    .height(trackHeight)
+                    .clip(A2Shape.full)
+                    .background(IdealPlayerColors.CardBorder)
+            )
+            if (bufferedFraction > 0f) {
                 Box(
                     Modifier
-                        .fillMaxWidth()
+                        .width(maxWidth * bufferedFraction)
                         .height(trackHeight)
                         .clip(A2Shape.full)
-                        .background(IdealPlayerColors.CardBorder)
-                )
-                if (bufferedFraction > 0f) {
-                    Box(
-                        Modifier
-                            .width(maxWidth * bufferedFraction)
-                            .height(trackHeight)
-                            .clip(A2Shape.full)
-                            .background(IdealPlayerColors.TextTertiary.copy(alpha = 0.38f))
-                    )
-                }
-                if (playedFraction > 0f) {
-                    Box(
-                        Modifier
-                            .width(maxWidth * playedFraction)
-                            .height(trackHeight)
-                            .clip(A2Shape.full)
-                            .background(IdealPlayerColors.Primary)
-                    )
-                    Box(
-                        Modifier
-                            .offset(x = (maxWidth - 4.dp) * playedFraction)
-                            .width(4.dp)
-                            .height(trackHeight)
-                            .background(IdealPlayerColors.TextPrimary)
-                    )
-                }
-                Slider(
-                    value = playedFraction,
-                    onValueChange = { fraction ->
-                        onScrub((safeDuration * fraction.coerceIn(0f, 1f)).toLong())
-                    },
-                    onValueChangeFinished = onScrubFinished,
-                    enabled = enabled,
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.Transparent,
-                        activeTrackColor = Color.Transparent,
-                        inactiveTrackColor = Color.Transparent,
-                        disabledThumbColor = Color.Transparent,
-                        disabledActiveTrackColor = Color.Transparent,
-                        disabledInactiveTrackColor = Color.Transparent
-                    ),
-                    modifier = Modifier.fillMaxSize()
+                        .background(IdealPlayerColors.TextTertiary.copy(alpha = 0.38f))
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    StringUtils.formatDuration(safePosition),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = IdealPlayerColors.TextSecondary
+            if (playedFraction > 0f) {
+                Box(
+                    Modifier
+                        .width(maxWidth * playedFraction)
+                        .height(trackHeight)
+                        .clip(A2Shape.full)
+                        .background(IdealPlayerColors.Primary)
                 )
-                Text(
-                    StringUtils.formatDuration(safeDuration),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = IdealPlayerColors.TextSecondary
+                Box(
+                    Modifier
+                        .offset(x = (maxWidth - 4.dp) * playedFraction)
+                        .width(4.dp)
+                        .height(trackHeight)
+                        .background(IdealPlayerColors.TextPrimary)
                 )
             }
+            Slider(
+                value = playedFraction,
+                onValueChange = { fraction ->
+                    onScrub((safeDuration * fraction.coerceIn(0f, 1f)).toLong())
+                },
+                onValueChangeFinished = onScrubFinished,
+                enabled = enabled,
+                valueRange = 0f..1f,
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.Transparent,
+                    activeTrackColor = Color.Transparent,
+                    inactiveTrackColor = Color.Transparent,
+                    disabledThumbColor = Color.Transparent,
+                    disabledActiveTrackColor = Color.Transparent,
+                    disabledInactiveTrackColor = Color.Transparent
+                ),
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                StringUtils.formatDuration(safePosition),
+                style = MaterialTheme.typography.bodySmall,
+                color = IdealPlayerColors.TextSecondary
+            )
+            Text(
+                StringUtils.formatDuration(safeDuration),
+                style = MaterialTheme.typography.bodySmall,
+                color = IdealPlayerColors.TextSecondary
+            )
         }
     }
 }
@@ -1908,8 +1923,6 @@ private fun playerPlaybackStateLabel(state: PlaybackState): String = stringResou
 private fun PlayerSettingsSheet(
     playerState: PlayerState,
     diagnostics: PlaybackDiagnostics,
-    externalAudioState: ExternalAudioState,
-    onOpenExternalAudio: () -> Unit,
     isTv: Boolean,
     initialSection: String?,
     isLivePlayback: Boolean,
@@ -1947,8 +1960,6 @@ private fun PlayerSettingsSheet(
                     PlayerSettingsContent(
                         playerState = playerState,
                         diagnostics = diagnostics,
-                        externalAudioState = externalAudioState,
-                        onOpenExternalAudio = onOpenExternalAudio,
                         isTv = true,
                         isLivePlayback = isLivePlayback,
                         sleepTimerRemaining = sleepTimerRemaining,
@@ -1988,8 +1999,6 @@ private fun PlayerSettingsSheet(
         PlayerSettingsContent(
             playerState = playerState,
             diagnostics = diagnostics,
-            externalAudioState = externalAudioState,
-            onOpenExternalAudio = onOpenExternalAudio,
             isTv = false,
             isLivePlayback = isLivePlayback,
             sleepTimerRemaining = sleepTimerRemaining,
@@ -2014,8 +2023,6 @@ private fun PlayerSettingsSheet(
 private fun PlayerSettingsContent(
     playerState: PlayerState,
     diagnostics: PlaybackDiagnostics,
-    externalAudioState: ExternalAudioState,
-    onOpenExternalAudio: () -> Unit,
     isTv: Boolean,
     isLivePlayback: Boolean,
     sleepTimerRemaining: String?,
@@ -2073,19 +2080,6 @@ private fun PlayerSettingsContent(
                             subtitle = "${playerState.playbackSpeed}x",
                             isTv = isTv,
                             onClick = { onSectionChange("speed") }
-                        )
-                    }
-
-                    // External Audio (SONIX)
-                    item {
-                        SettingsMenuItem(
-                            icon = Icons.Filled.Headphones,
-                            title = "صوت خارجي (SONIX)",
-                            subtitle = if (externalAudioState.isActive) externalAudioState.selectedChannel?.name ?: "مفعّل" else "غير مفعّل",
-                            isTv = isTv,
-                            onClick = {
-                                onOpenExternalAudio()
-                            }
                         )
                     }
 
