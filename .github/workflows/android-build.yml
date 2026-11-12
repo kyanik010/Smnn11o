@@ -1,4 +1,4 @@
-name: Back1 Android Build
+name: Back1 Signed Android Build
 
 on:
   push:
@@ -18,9 +18,14 @@ concurrency:
 
 jobs:
   build:
-    name: Build APKs and run unit tests
+    name: Test, build, and sign APKs
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout Back1
         uses: actions/checkout@v4
@@ -41,7 +46,26 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools'
+          packages: platform-tools
+
+      - name: Verify signing secrets and restore the existing keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required signing secret $name is missing."
+              exit 1
+            fi
+          done
+          KEYSTORE_PATH="$RUNNER_TEMP/my-upload-key.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "Existing signing keystore restored."
+
+      - name: Install APK signing tools
+        run: sdkmanager "build-tools;35.0.0" "platforms;android-35"
 
       - name: Run unit tests
         run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
@@ -49,13 +73,46 @@ jobs:
       - name: Build Debug APK
         run: gradle --no-daemon :app:assembleDebug --stacktrace
 
-      - name: Build Release APK
+      - name: Build signed Release APK
         run: gradle --no-daemon :app:assembleRelease --stacktrace
+
+      - name: Verify Release APK signature against the original keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          mapfile -t APKS < <(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort)
+          if [[ "${#APKS[@]}" -eq 0 ]]; then
+            echo "::error::No Release APK was generated."
+            exit 1
+          fi
+          normalize_digest() { tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]'; }
+          KEYSTORE_CERT_SHA256="$(
+            keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$ANDROID_KEY_ALIAS" \
+              -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>&1 |
+              awk '/SHA256:/{print $2; exit}' | normalize_digest
+          )"
+          test -n "$KEYSTORE_CERT_SHA256"
+          echo "Original keystore certificate SHA-256: $KEYSTORE_CERT_SHA256"
+          for apk in "${APKS[@]}"; do
+            SIGNATURE_OUTPUT="$RUNNER_TEMP/$(basename "$apk").signature.txt"
+            "$APKSIGNER" verify --verbose --print-certs "$apk" > "$SIGNATURE_OUTPUT" 2>&1
+            cat "$SIGNATURE_OUTPUT"
+            APK_CERT_SHA256="$(
+              awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}' "$SIGNATURE_OUTPUT" |
+                normalize_digest
+            )"
+            if [[ -z "$APK_CERT_SHA256" || "$APK_CERT_SHA256" != "$KEYSTORE_CERT_SHA256" ]]; then
+              echo "::error::APK signing certificate does not match the original branch keystore."
+              exit 1
+            fi
+            echo "Verified same signing certificate: $(basename "$apk")"
+          done
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Back1-Android-APKs
+          name: Back1-Signed-Android-APKs
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
