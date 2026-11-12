@@ -38,8 +38,6 @@ data class AppSettings(
     val subtitleColor: Long = 0xFFFFFFFF,
     val subtitleBackground: Long = 0x80000000,
     val rememberTrackPerContent: Boolean = false,
-    val externalAudioVolume: Float = 1f,
-    val externalAudioSyncOffsetMs: Long = 0L,
 
     // Video Quality
     val videoQualityMode: String = "AUTO",
@@ -98,8 +96,6 @@ class SettingsDataStore @Inject constructor(
         val SUBTITLE_COLOR = longPreferencesKey("subtitle_color")
         val SUBTITLE_BG = longPreferencesKey("subtitle_background")
         val REMEMBER_TRACK_PER_CONTENT = booleanPreferencesKey("remember_track_per_content")
-        val EXTERNAL_AUDIO_VOLUME = floatPreferencesKey("external_audio_volume")
-        val EXTERNAL_AUDIO_SYNC_OFFSET = longPreferencesKey("external_audio_sync_offset_ms")
 
         // Video Quality
         val VIDEO_QUALITY_MODE = stringPreferencesKey("video_quality_mode")
@@ -149,8 +145,6 @@ class SettingsDataStore @Inject constructor(
             subtitleColor = prefs[Keys.SUBTITLE_COLOR] ?: 0xFFFFFFFF,
             subtitleBackground = prefs[Keys.SUBTITLE_BG] ?: 0x80000000,
             rememberTrackPerContent = prefs[Keys.REMEMBER_TRACK_PER_CONTENT] ?: false,
-            externalAudioVolume = (prefs[Keys.EXTERNAL_AUDIO_VOLUME] ?: 1f).coerceIn(0f, 1f),
-            externalAudioSyncOffsetMs = (prefs[Keys.EXTERNAL_AUDIO_SYNC_OFFSET] ?: 0L).coerceIn(-10000L, 10000L),
 
             videoQualityMode = prefs[Keys.VIDEO_QUALITY_MODE] ?: "AUTO",
             defaultDisplayMode = prefs[Keys.DEFAULT_DISPLAY_MODE] ?: prefs[Keys.ASPECT_RATIO] ?: "FIT",
@@ -200,8 +194,6 @@ class SettingsDataStore @Inject constructor(
     suspend fun updateAutoEnableSubtitles(enabled: Boolean) { store.edit { it[Keys.AUTO_ENABLE_SUBTITLES] = enabled } }
     suspend fun updateSubtitleSize(size: Int) { store.edit { it[Keys.SUBTITLE_SIZE] = size } }
     suspend fun updateRememberTrackPerContent(enabled: Boolean) { store.edit { it[Keys.REMEMBER_TRACK_PER_CONTENT] = enabled } }
-    suspend fun updateExternalAudioVolume(volume: Float) { store.edit { it[Keys.EXTERNAL_AUDIO_VOLUME] = volume.coerceIn(0f, 1f) } }
-    suspend fun updateExternalAudioSyncOffset(offsetMs: Long) { store.edit { it[Keys.EXTERNAL_AUDIO_SYNC_OFFSET] = offsetMs.coerceIn(-10000L, 10000L) } }
 
     // ━━━━━━ Video Quality ━━━━━━
     suspend fun updateVideoQualityMode(mode: String) { store.edit { it[Keys.VIDEO_QUALITY_MODE] = mode } }
