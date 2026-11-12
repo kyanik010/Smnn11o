@@ -136,8 +136,6 @@ interface PlayerEngine {
     fun setAspectRatio(mode: AspectRatioMode)
     fun setVideoQualityMode(mode: VideoQualityMode) {}
     fun selectVideoTrack(index: Int) {}
-    fun muteAudio() {}
-    fun unMuteAudio() {}
     fun setPlaybackConfiguration(
         bufferDurationMs: Long,
         liveLatencyMode: String,
