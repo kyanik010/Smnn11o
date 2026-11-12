@@ -25,8 +25,6 @@ import com.idealplayer.app.core.player.SleepTimerManager
 import com.idealplayer.app.core.player.SleepTimerState
 import com.idealplayer.app.core.player.StreamRetryManager
 import com.idealplayer.app.core.player.VideoQualityMode
-import com.idealplayer.app.core.audio.ExternalAudioManager
-import com.idealplayer.app.core.audio.ExternalAudioState
 import com.idealplayer.app.data.repository.ContentRepository
 import com.idealplayer.app.data.repository.EpgRepository
 import com.idealplayer.app.data.repository.PlaylistRepository
@@ -91,7 +89,6 @@ private data class AutoPlayNextSnapshot(
 class PlayerViewModel @Inject constructor(
     val playerManager: PlayerManager,
     private val settingsDataStore: SettingsDataStore,
-    val externalAudioManager: ExternalAudioManager,
     private val contentRepository: ContentRepository,
     private val playlistRepository: PlaylistRepository,
     val retryManager: StreamRetryManager,
@@ -165,27 +162,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     init {
-        externalAudioManager.muteVideoAudioAction = { playerManager.muteAudio() }
-        externalAudioManager.restoreVideoAudioAction = { playerManager.unMuteAudio() }
-        viewModelScope.launch {
-            val savedSettings = settingsDataStore.settings.first()
-            externalAudioManager.setVolume(savedSettings.externalAudioVolume)
-            externalAudioManager.setSyncOffset(savedSettings.externalAudioSyncOffsetMs)
-        }
-        viewModelScope.launch {
-            while (true) {
-                delay(500)
-                if (externalAudioState.value.isActive && state.value.isPlaying) {
-                    val isLive = currentContentType == ContentType.LIVE.name ||
-                        session.value.currentChannel != null
-                    externalAudioManager.syncToVideoPosition(
-                        videoPositionMs = state.value.currentPosition,
-                        isLive = isLive
-                    )
-                }
-            }
-        }
-
         viewModelScope.launch {
             while (true) {
                 delay(15_000)
@@ -741,7 +717,6 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun exitPlayer(onBack: () -> Unit) {
-        externalAudioManager.stop()
         viewModelScope.launch(Dispatchers.IO) {
             saveProgressInternal()
         }
@@ -753,43 +728,7 @@ class PlayerViewModel @Inject constructor(
         onBack()
     }
 
-
-    val externalAudioState: StateFlow<ExternalAudioState> = externalAudioManager.state
-
-    fun startExternalAudio(channel: Channel) {
-        viewModelScope.launch {
-            val playlist = playlistRepository.getActivePlaylist().first() ?: return@launch
-            externalAudioManager.startExternalAudio(channel, playlist)
-        }
-    }
-
-    fun stopExternalAudio() {
-        externalAudioManager.stop()
-    }
-
-    fun setExternalAudioVolume(volume: Float) {
-        externalAudioManager.setVolume(volume)
-        viewModelScope.launch { settingsDataStore.updateExternalAudioVolume(volume) }
-    }
-
-    fun setExternalAudioSyncOffset(offsetMs: Long) {
-        externalAudioManager.setSyncOffset(offsetMs)
-        viewModelScope.launch { settingsDataStore.updateExternalAudioSyncOffset(offsetMs) }
-    }
-
-    fun refreshExternalAudioCandidates() {
-        // Loading and classifying a large IPTV catalog must not run on Compose's UI thread.
-        viewModelScope.launch(Dispatchers.IO) {
-            val playlist = playlistRepository.getActivePlaylist().first() ?: return@launch
-            val channels = contentRepository.getChannels(playlist.id).first()
-            val currentId = session.value.currentChannel?.id
-            externalAudioManager.populateCandidates(channels, currentId)
-        }
-    }
-
     override fun onCleared() {
-        externalAudioManager.stop()
-
         super.onCleared()
         livePlaybackJob?.cancel()
         contentPlaybackJob?.cancel()
@@ -888,13 +827,6 @@ class PlayerViewModel @Inject constructor(
         val previousStartPosition = currentStartPosition
         val previousPlaybackWasConfirmed = hasConfirmedCurrentContent || state.value.isPlaybackConfirmed
         val previousSession = session.value
-
-        // Release the secondary audio decoder before starting the next live video channel.
-        if (externalAudioManager.state.value.isActive) {
-            Timber.d("LivePlayback: stopping active external audio before channel switch")
-            externalAudioManager.stop()
-        }
-
         val targetGroupContext = channel.groupTitle.ifBlank { currentGroupContext }
         val playbackCandidates = resolvePlaybackCandidates(channel.streamUrl, ContentType.LIVE.name)
 
