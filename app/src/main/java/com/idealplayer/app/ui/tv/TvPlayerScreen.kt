@@ -71,11 +71,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -145,7 +142,6 @@ import com.idealplayer.app.ui.player.PlayerShellMode
 import com.idealplayer.app.ui.player.PlayerSurfaceHost
 import com.idealplayer.app.ui.player.PlayerSurfaceHostState
 import com.idealplayer.app.ui.player.PlayerViewModel
-import com.idealplayer.app.ui.player.ExternalAudioBottomSheet
 import kotlin.math.roundToInt
 import timber.log.Timber
 
@@ -572,8 +568,6 @@ fun TvPlayerScreen(
     val currentChannelEpgPrograms by viewModel.currentChannelEpgPrograms.collectAsStateWithLifecycle()
     val channelBrowserChannels by viewModel.channelBrowserChannels.collectAsStateWithLifecycle()
     val sleepTimerState by viewModel.sleepTimerState.collectAsStateWithLifecycle()
-    val externalAudioState by viewModel.externalAudioState.collectAsStateWithLifecycle()
-    var showExternalAudioSheet by rememberSaveable { mutableStateOf(false) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
@@ -1055,8 +1049,21 @@ fun TvPlayerScreen(
     }
 
     LaunchedEffect(liveChannelSwitch.errorMessage) {
-        if (!liveChannelSwitch.errorMessage.isNullOrBlank() && !isLivePlayback) {
-            showOverlay(defaultOverlayAction)
+        if (!liveChannelSwitch.errorMessage.isNullOrBlank()) {
+            if (isLivePlayback && session.availableChannels.isNotEmpty()) {
+                clearTransientZapFeedback()
+                releaseFocusBeforeStructureChange("opening failed-channel browser")
+                requestedOverlayAction = TvOverlayAction.CHANNELS
+                overlayVisible = true
+                activePanel = TvPlayerPanel.CHANNELS
+                channelPanelGroup = session.liveGroup
+                    .takeIf { it.isNotBlank() }
+                    ?: session.currentChannel?.groupTitle?.takeIf { it.isNotBlank() }
+                viewModel.loadChannelBrowser(channelPanelGroup)
+                registerInteraction()
+            } else {
+                showOverlay(defaultOverlayAction)
+            }
         }
     }
 
@@ -1569,17 +1576,6 @@ fun TvPlayerScreen(
             }
         }
 
-        if (showExternalAudioSheet) {
-            ExternalAudioBottomSheet(
-                state = externalAudioState,
-                onSelectChannel = { channel -> viewModel.startExternalAudio(channel) },
-                onStopAudio = { viewModel.stopExternalAudio() },
-                onVolumeChange = { volume -> viewModel.setExternalAudioVolume(volume) },
-                onSyncOffsetChange = { offset -> viewModel.setExternalAudioSyncOffset(offset) },
-                onDismiss = { showExternalAudioSheet = false }
-            )
-        }
-
         if (showPlaybackError) {
             TvErrorState(
                 message = liveChannelSwitch.errorMessage
@@ -1806,11 +1802,6 @@ fun TvPlayerScreen(
                         returnTarget = TvPlayerPanel.SETTINGS,
                         preferredSettingsKey = "settings:audio"
                     )
-                },
-                onOpenExternalAudio = {
-                    viewModel.refreshExternalAudioCandidates()
-                    closePanel()
-                    showExternalAudioSheet = true
                 },
                 onOpenSubtitlePanel = {
                     openRemotePanel(
@@ -2180,115 +2171,113 @@ private fun TvPlaybackOverlay(
                     onNextEpisode = onNextEpisode
                 )
 
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .focusGroup(),
-                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TvPlayerControlButton(
-                            icon = Icons.Filled.SkipPrevious,
-                            contentDescription = stringResource(
-                                if (isLivePlayback) R.string.previous_channel else
-                                    R.string.previous_episode
-                            ),
-                            enabled = hasPreviousContent,
-                            focusRequester = overlayActionRequesters.getValue(TvOverlayAction.MAIN_PREVIOUS),
-                            leftFocusRequester = leftActions.lastOrNull()?.let(overlayActionRequesters::getValue)
-                                ?: FocusRequester.Cancel,
-                            rightFocusRequester = if (playerState.isSeekable) {
-                                overlayActionRequesters.getValue(TvOverlayAction.SEEK_BACKWARD)
-                            } else {
-                                overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE)
-                            },
-                            upFocusRequester = timelineFocusRequester,
-                            onFocused = { onActionFocused(TvOverlayAction.MAIN_PREVIOUS) },
-                            onClick = onPreviousContent
-                        )
-                        TvPlayerControlButton(
-                            icon = Icons.Filled.Replay10,
-                            contentDescription = stringResource(
-                                R.string.seek_backward_short,
-                                tvSeekStepSeconds(seekBackwardMs)
-                            ),
-                            enabled = playerState.isSeekable,
-                            focusRequester = overlayActionRequesters.getValue(TvOverlayAction.SEEK_BACKWARD),
-                            leftFocusRequester = if (hasPreviousContent) {
-                                overlayActionRequesters.getValue(TvOverlayAction.MAIN_PREVIOUS)
-                            } else {
-                                leftActions.lastOrNull()?.let(overlayActionRequesters::getValue)
-                                    ?: FocusRequester.Cancel
-                            },
-                            rightFocusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
-                            upFocusRequester = timelineFocusRequester,
-                            onFocused = { onActionFocused(TvOverlayAction.SEEK_BACKWARD) },
-                            onClick = onSeekBackward
-                        )
-                        TvPlayerControlButton(
-                            icon = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = stringResource(
-                                if (playerState.isPlaying) R.string.action_pause else R.string.action_play
-                            ),
-                            enabled = true,
-                            focusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
-                            leftFocusRequester = if (playerState.isSeekable) {
-                                overlayActionRequesters.getValue(TvOverlayAction.SEEK_BACKWARD)
-                            } else if (hasPreviousContent) {
-                                overlayActionRequesters.getValue(TvOverlayAction.MAIN_PREVIOUS)
-                            } else {
-                                FocusRequester.Cancel
-                            },
-                            rightFocusRequester = if (playerState.isSeekable) {
-                                overlayActionRequesters.getValue(TvOverlayAction.SEEK_FORWARD)
-                            } else if (hasNextContent) {
-                                overlayActionRequesters.getValue(TvOverlayAction.MAIN_NEXT)
-                            } else {
-                                FocusRequester.Cancel
-                            },
-                            upFocusRequester = timelineFocusRequester,
-                            onFocused = { onActionFocused(TvOverlayAction.PLAY_PAUSE) },
-                            onClick = onPlayPause
-                        )
-                        TvPlayerControlButton(
-                            icon = Icons.Filled.Forward10,
-                            contentDescription = stringResource(
-                                R.string.seek_forward_short,
-                                tvSeekStepSeconds(seekForwardMs)
-                            ),
-                            enabled = playerState.isSeekable,
-                            focusRequester = overlayActionRequesters.getValue(TvOverlayAction.SEEK_FORWARD),
-                            leftFocusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
-                            rightFocusRequester = if (hasNextContent) {
-                                overlayActionRequesters.getValue(TvOverlayAction.MAIN_NEXT)
-                            } else {
-                                rightActions.firstOrNull()?.let(overlayActionRequesters::getValue)
-                                    ?: FocusRequester.Cancel
-                            },
-                            upFocusRequester = timelineFocusRequester,
-                            onFocused = { onActionFocused(TvOverlayAction.SEEK_FORWARD) },
-                            onClick = onSeekForward
-                        )
-                        TvPlayerControlButton(
-                            icon = Icons.Filled.SkipNext,
-                            contentDescription = stringResource(
-                                if (isLivePlayback) R.string.next_channel else R.string.next_episode
-                            ),
-                            enabled = hasNextContent,
-                            focusRequester = overlayActionRequesters.getValue(TvOverlayAction.MAIN_NEXT),
-                            leftFocusRequester = if (playerState.isSeekable) {
-                                overlayActionRequesters.getValue(TvOverlayAction.SEEK_FORWARD)
-                            } else {
-                                overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE)
-                            },
-                            rightFocusRequester = rightActions.firstOrNull()?.let(overlayActionRequesters::getValue)
-                                ?: FocusRequester.Cancel,
-                            upFocusRequester = timelineFocusRequester,
-                            onFocused = { onActionFocused(TvOverlayAction.MAIN_NEXT) },
-                            onClick = onNextContent
-                        )
-                    }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .focusGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TvPlayerControlButton(
+                        icon = Icons.Filled.SkipPrevious,
+                        contentDescription = stringResource(
+                            if (isLivePlayback) R.string.previous_channel else
+                                R.string.previous_episode
+                        ),
+                        enabled = hasPreviousContent,
+                        focusRequester = overlayActionRequesters.getValue(TvOverlayAction.MAIN_PREVIOUS),
+                        leftFocusRequester = leftActions.lastOrNull()?.let(overlayActionRequesters::getValue)
+                            ?: FocusRequester.Cancel,
+                        rightFocusRequester = if (playerState.isSeekable) {
+                            overlayActionRequesters.getValue(TvOverlayAction.SEEK_BACKWARD)
+                        } else {
+                            overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE)
+                        },
+                        upFocusRequester = timelineFocusRequester,
+                        onFocused = { onActionFocused(TvOverlayAction.MAIN_PREVIOUS) },
+                        onClick = onPreviousContent
+                    )
+                    TvPlayerControlButton(
+                        icon = Icons.Filled.Replay10,
+                        contentDescription = stringResource(
+                            R.string.seek_backward_short,
+                            tvSeekStepSeconds(seekBackwardMs)
+                        ),
+                        enabled = playerState.isSeekable,
+                        focusRequester = overlayActionRequesters.getValue(TvOverlayAction.SEEK_BACKWARD),
+                        leftFocusRequester = if (hasPreviousContent) {
+                            overlayActionRequesters.getValue(TvOverlayAction.MAIN_PREVIOUS)
+                        } else {
+                            leftActions.lastOrNull()?.let(overlayActionRequesters::getValue)
+                                ?: FocusRequester.Cancel
+                        },
+                        rightFocusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
+                        upFocusRequester = timelineFocusRequester,
+                        onFocused = { onActionFocused(TvOverlayAction.SEEK_BACKWARD) },
+                        onClick = onSeekBackward
+                    )
+                    TvPlayerControlButton(
+                        icon = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = stringResource(
+                            if (playerState.isPlaying) R.string.action_pause else R.string.action_play
+                        ),
+                        enabled = true,
+                        focusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
+                        leftFocusRequester = if (playerState.isSeekable) {
+                            overlayActionRequesters.getValue(TvOverlayAction.SEEK_BACKWARD)
+                        } else if (hasPreviousContent) {
+                            overlayActionRequesters.getValue(TvOverlayAction.MAIN_PREVIOUS)
+                        } else {
+                            FocusRequester.Cancel
+                        },
+                        rightFocusRequester = if (playerState.isSeekable) {
+                            overlayActionRequesters.getValue(TvOverlayAction.SEEK_FORWARD)
+                        } else if (hasNextContent) {
+                            overlayActionRequesters.getValue(TvOverlayAction.MAIN_NEXT)
+                        } else {
+                            FocusRequester.Cancel
+                        },
+                        upFocusRequester = timelineFocusRequester,
+                        onFocused = { onActionFocused(TvOverlayAction.PLAY_PAUSE) },
+                        onClick = onPlayPause
+                    )
+                    TvPlayerControlButton(
+                        icon = Icons.Filled.Forward10,
+                        contentDescription = stringResource(
+                            R.string.seek_forward_short,
+                            tvSeekStepSeconds(seekForwardMs)
+                        ),
+                        enabled = playerState.isSeekable,
+                        focusRequester = overlayActionRequesters.getValue(TvOverlayAction.SEEK_FORWARD),
+                        leftFocusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
+                        rightFocusRequester = if (hasNextContent) {
+                            overlayActionRequesters.getValue(TvOverlayAction.MAIN_NEXT)
+                        } else {
+                            rightActions.firstOrNull()?.let(overlayActionRequesters::getValue)
+                                ?: FocusRequester.Cancel
+                        },
+                        upFocusRequester = timelineFocusRequester,
+                        onFocused = { onActionFocused(TvOverlayAction.SEEK_FORWARD) },
+                        onClick = onSeekForward
+                    )
+                    TvPlayerControlButton(
+                        icon = Icons.Filled.SkipNext,
+                        contentDescription = stringResource(
+                            if (isLivePlayback) R.string.next_channel else R.string.next_episode
+                        ),
+                        enabled = hasNextContent,
+                        focusRequester = overlayActionRequesters.getValue(TvOverlayAction.MAIN_NEXT),
+                        leftFocusRequester = if (playerState.isSeekable) {
+                            overlayActionRequesters.getValue(TvOverlayAction.SEEK_FORWARD)
+                        } else {
+                            overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE)
+                        },
+                        rightFocusRequester = rightActions.firstOrNull()?.let(overlayActionRequesters::getValue)
+                            ?: FocusRequester.Cancel,
+                        upFocusRequester = timelineFocusRequester,
+                        onFocused = { onActionFocused(TvOverlayAction.MAIN_NEXT) },
+                        onClick = onNextContent
+                    )
                 }
 
                 TvA2UtilityRow(
@@ -2719,59 +2708,57 @@ private fun LegacyTvPlaybackOverlay(
                         )
                     }
 
-                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                        Row(
-                            modifier = Modifier.focusGroup(),
-                            horizontalArrangement = Arrangement.spacedBy(
-                                if (isLivePlayback) 12.dp else 18.dp
-                            ),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TvActionButton(
-                                icon = if (isLivePlayback) Icons.Filled.SkipPrevious else Icons.Filled.Replay10,
-                                label = if (isLivePlayback) stringResource(R.string.previous_channel) else
-                                    stringResource(R.string.seek_backward_short, tvSeekStepSeconds(seekBackwardMs)),
-                                enabled = previousEnabled,
-                                focusRequester = overlayActionRequesters.getValue(TvOverlayAction.MAIN_PREVIOUS),
-                                leftFocusRequester = FocusRequester.Cancel,
-                                rightFocusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
-                                upFocusRequester = primaryUpRequester,
-                                onFocused = { onActionFocused(TvOverlayAction.MAIN_PREVIOUS) },
-                                compact = isLivePlayback,
-                                onClick = onPrevious
-                            )
-                            TvActionButton(
-                                icon = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                label = if (playerState.isPlaying) stringResource(R.string.action_pause) else
-                                    stringResource(R.string.action_play),
-                                enabled = true,
-                                primary = true,
-                                focusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
-                                leftFocusRequester = overlayActionRequesters
-                                    .getValue(TvOverlayAction.MAIN_PREVIOUS)
-                                    .takeIf { previousEnabled } ?: FocusRequester.Cancel,
-                                rightFocusRequester = overlayActionRequesters
-                                    .getValue(TvOverlayAction.MAIN_NEXT)
-                                    .takeIf { nextEnabled } ?: FocusRequester.Cancel,
-                                upFocusRequester = primaryUpRequester,
-                                onFocused = { onActionFocused(TvOverlayAction.PLAY_PAUSE) },
-                                compact = isLivePlayback,
-                                onClick = onPlayPause
-                            )
-                            TvActionButton(
-                                icon = if (isLivePlayback) Icons.Filled.SkipNext else Icons.Filled.Forward10,
-                                label = if (isLivePlayback) stringResource(R.string.next_channel) else
-                                    stringResource(R.string.seek_forward_short, tvSeekStepSeconds(seekForwardMs)),
-                                enabled = nextEnabled,
-                                focusRequester = overlayActionRequesters.getValue(TvOverlayAction.MAIN_NEXT),
-                                leftFocusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
-                                rightFocusRequester = FocusRequester.Cancel,
-                                upFocusRequester = primaryUpRequester,
-                                onFocused = { onActionFocused(TvOverlayAction.MAIN_NEXT) },
-                                compact = isLivePlayback,
-                                onClick = onNext
-                            )
-                        }
+                    Row(
+                        modifier = Modifier.focusGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(
+                            if (isLivePlayback) 12.dp else 18.dp
+                        ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TvActionButton(
+                            icon = if (isLivePlayback) Icons.Filled.SkipPrevious else Icons.Filled.Replay10,
+                            label = if (isLivePlayback) stringResource(R.string.previous_channel) else
+                                stringResource(R.string.seek_backward_short, tvSeekStepSeconds(seekBackwardMs)),
+                            enabled = previousEnabled,
+                            focusRequester = overlayActionRequesters.getValue(TvOverlayAction.MAIN_PREVIOUS),
+                            leftFocusRequester = FocusRequester.Cancel,
+                            rightFocusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
+                            upFocusRequester = primaryUpRequester,
+                            onFocused = { onActionFocused(TvOverlayAction.MAIN_PREVIOUS) },
+                            compact = isLivePlayback,
+                            onClick = onPrevious
+                        )
+                        TvActionButton(
+                            icon = if (playerState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            label = if (playerState.isPlaying) stringResource(R.string.action_pause) else
+                                stringResource(R.string.action_play),
+                            enabled = true,
+                            primary = true,
+                            focusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
+                            leftFocusRequester = overlayActionRequesters
+                                .getValue(TvOverlayAction.MAIN_PREVIOUS)
+                                .takeIf { previousEnabled } ?: FocusRequester.Cancel,
+                            rightFocusRequester = overlayActionRequesters
+                                .getValue(TvOverlayAction.MAIN_NEXT)
+                                .takeIf { nextEnabled } ?: FocusRequester.Cancel,
+                            upFocusRequester = primaryUpRequester,
+                            onFocused = { onActionFocused(TvOverlayAction.PLAY_PAUSE) },
+                            compact = isLivePlayback,
+                            onClick = onPlayPause
+                        )
+                        TvActionButton(
+                            icon = if (isLivePlayback) Icons.Filled.SkipNext else Icons.Filled.Forward10,
+                            label = if (isLivePlayback) stringResource(R.string.next_channel) else
+                                stringResource(R.string.seek_forward_short, tvSeekStepSeconds(seekForwardMs)),
+                            enabled = nextEnabled,
+                            focusRequester = overlayActionRequesters.getValue(TvOverlayAction.MAIN_NEXT),
+                            leftFocusRequester = overlayActionRequesters.getValue(TvOverlayAction.PLAY_PAUSE),
+                            rightFocusRequester = FocusRequester.Cancel,
+                            upFocusRequester = primaryUpRequester,
+                            onFocused = { onActionFocused(TvOverlayAction.MAIN_NEXT) },
+                            compact = isLivePlayback,
+                            onClick = onNext
+                        )
                     }
 
                     LazyRow(
@@ -2975,7 +2962,6 @@ private fun TvPlayerPanelHost(
     onOpenScreenModePanel: () -> Unit,
     onOpenQualityPanel: () -> Unit,
     onOpenAudioPanel: () -> Unit,
-    onOpenExternalAudio: () -> Unit,
     onOpenSubtitlePanel: () -> Unit,
     onOpenSpeedPanel: () -> Unit,
     onOpenSleepTimerPanel: () -> Unit,
@@ -3115,8 +3101,8 @@ private fun TvPlayerPanelHost(
             }
 
             TvPlayerPanel.AUDIO -> {
-                val options = buildList {
-                    addAll(playerState.audioTracks.map { track ->
+                val options = if (playerState.audioTracks.isNotEmpty()) {
+                    playerState.audioTracks.map { track ->
                         TvPanelOption(
                             key = "audio:${track.index}",
                             title = track.name,
@@ -3124,13 +3110,14 @@ private fun TvPlayerPanelHost(
                             selected = track.isSelected,
                             onClick = { onSelectAudio(track.index) }
                         )
-                    })
-                    add(
+                    }
+                } else {
+                    listOf(
                         TvPanelOption(
-                            key = "audio:external-source",
-                            title = "مصدر صوت خارجي",
-                            subtitle = "beIN SPORTS / ALWAN",
-                            onClick = onOpenExternalAudio
+                            key = "audio:empty",
+                            title = stringResource(R.string.no_content),
+                            enabled = false,
+                            onClick = {}
                         )
                     )
                 }
@@ -4265,9 +4252,8 @@ internal fun TvSeekBar(
         (bufferedPosition.toFloat() / duration.toFloat()).coerceIn(progress, 1f)
     } else 0f
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Column(
-            modifier = modifier
+    Column(
+        modifier = modifier
             .fillMaxWidth()
             .testTag(TV_PLAYER_SEEK_BAR_TEST_TAG)
             .focusRequester(focusRequester)
@@ -4398,6 +4384,5 @@ internal fun TvSeekBar(
                 color = Color.White
             )
         }
-    }
     }
 }
